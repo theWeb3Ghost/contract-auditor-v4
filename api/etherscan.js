@@ -106,3 +106,7 @@ function flattenSource(raw) {
   }
   return raw;
       }
+
+
+module.exports.fetchSource = fetchSource;
+module.exports.flattenSource = flattenSource;

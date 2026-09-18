@@ -55,6 +55,13 @@ await db
     ),
     db.collection('batch_items').createIndex(
       { batchId: 1, status: 1, index: 1 }
+    ),
+    db.collection('reaudits').createIndex(
+      { auditId: 1 },
+      { unique: true }
+    ),
+    db.collection('reaudits').createIndex(
+      { batchId: 1, status: 1, createdAt: 1 }
     )
   ]);
 

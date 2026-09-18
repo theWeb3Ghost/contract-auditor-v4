@@ -27,6 +27,12 @@ const {
   runComBatchItem
 } = require('./com');
 
+const {
+  ensureReauditRecord,
+  claimReadyReaudit,
+  applyClaimedReaudit
+} = require('./reaudit');
+
 
 // ============================================================
 // CONFIGURATION
@@ -2722,6 +2728,19 @@ if (batch.mode === 'com' && batch.com?.enabled) {
     }
   });
 
+  const updatedItem = await items.findOne({ _id: item._id });
+  const reaudit = await ensureReauditRecord({
+    batch,
+    item: updatedItem || item
+  });
+
+  if (reaudit) {
+    return {
+      status: 'reaudit_pending',
+      terminal: true
+    };
+  }
+
   return outcome;
 }
 
@@ -3074,6 +3093,19 @@ if (
   );
 
 
+  const updatedItem = await items.findOne({ _id: item._id });
+  const reaudit = await ensureReauditRecord({
+    batch,
+    item: updatedItem || item
+  });
+
+  if (reaudit) {
+    return {
+      status: 'reaudit_pending',
+      terminal: true
+    };
+  }
+
   return {
     status:
       'completed'
@@ -3223,60 +3255,78 @@ async function startBatchWorker(
 
 
       // --------------------------------------------------------
-      // NEXT ITEM
+      // REAUDIT PRIORITY SLOT
+      // --------------------------------------------------------
+      //
+      // A completed Reaudit never interrupts an item already in
+      // progress. It is atomically claimed here, at the worker
+      // boundary, before the next untouched normal item.
       // --------------------------------------------------------
 
-      const item =
-        await items.findOne(
-          {
-            batchId,
+      const readyReaudit = await claimReadyReaudit(batchId);
 
-            status: {
-              $in: [
-                'pending',
-                'running'
-              ]
+      if (readyReaudit) {
+        const applied = await applyClaimedReaudit(readyReaudit);
+
+        if (applied.applied) {
+          await batches.updateOne(
+            { batchId },
+            {
+              $inc: { completed: 1 },
+              $set: { updatedAt: now() }
             }
-          },
-          {
-            sort: {
-              index: 1
-            }
+          );
+        }
+
+        await sleep(50);
+        continue;
+      }
+
+      // --------------------------------------------------------
+      // NEXT NORMAL ITEM
+      // --------------------------------------------------------
+
+      const item = await items.findOne(
+        {
+          batchId,
+          status: {
+            $in: ['pending', 'running']
           }
-        );
+        },
+        {
+          sort: { index: 1 }
+        }
+      );
 
+      if (!item) {
+        // Do not finish a batch while a human Reaudit is still
+        // waiting for input or an LLM result. The dashboard can
+        // then be used while the batch remains alive.
+        const waitingReaudit = await db.collection('reaudits').findOne({
+          batchId,
+          status: { $in: ['pending', 'running', 'applying'] }
+        });
 
-      if (
-        !item
-      ) {
+        if (waitingReaudit) {
+          await sleep(1000);
+          continue;
+        }
 
         await batches.updateOne(
-          {
-            batchId
-          },
+          { batchId },
           {
             $set: {
-
-              status:
-                'completed',
-
-              completedAt:
-                now(),
-
-              updatedAt:
-                now(),
-
-              currentIndex:
-                batch.total
+              status: 'completed',
+              completedAt: now(),
+              updatedAt: now(),
+              currentIndex: batch.total
             }
           }
         );
-
 
         console.log(
           `[BATCH ${batchId}] Batch completed`
         );
-
 
         break;
       }
@@ -3321,6 +3371,8 @@ async function startBatchWorker(
             1;
         }
 
+        // reaudit_pending is intentionally not counted as done.
+        // The priority application later increments completed.
 
         if (
           outcome.status ===
@@ -3763,6 +3815,15 @@ async function createBatch(
 
           truncated:
             false,
+
+          auditStage:
+            'pending',
+
+          reauditUsed:
+            false,
+
+          reauditId:
+            null,
 
           error:
             null,
@@ -4324,6 +4385,10 @@ async function restartBatch(
     );
 
 
+    // Restart means a brand-new audit run, so the one-shot Reaudit
+    // opportunity is reset as well.
+    await db.collection('reaudits').deleteMany({ batchId: batch.batchId });
+
     // Reset every item.
     await items.updateMany(
       {
@@ -4353,6 +4418,15 @@ async function restartBatch(
 
           truncated:
             false,
+
+          auditStage:
+            'pending',
+
+          reauditUsed:
+            false,
+
+          reauditId:
+            null,
 
           error:
             null,
@@ -4508,6 +4582,8 @@ async function clearBatch(
         batch.batchId
     });
 
+
+    await db.collection('reaudits').deleteMany({ batchId: batch.batchId });
 
     await batches.deleteOne({
       batchId:
