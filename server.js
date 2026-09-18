@@ -15,6 +15,11 @@ const {
   ensureSkipListIndexes
 } = require('./api/contract-skip-list');
 
+const {
+  router: reauditRouter,
+  resumePendingReaudits
+} = require('./api/reaudit');
+
 
 
 const app = express();
@@ -103,6 +108,12 @@ app.use(
   contractSkipListRouter
 );
 
+// Human-assisted one-shot Reaudit dashboard / queue.
+app.use(
+  '/api/reaudit',
+  reauditRouter
+);
+
 // ============================================================
 // HEALTH CHECK
 // ============================================================
@@ -163,6 +174,10 @@ const server =
     );
   }
 
+
+      // Reset any Reaudit whose LLM request was interrupted by a
+      // Render restart. The user can run it again from the dashboard.
+      await resumePendingReaudits();
 
       // Resume unfinished batches after restart.
       try {

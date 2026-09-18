@@ -523,6 +523,116 @@ button:disabled {
     #ef4444;
 } 
 
+
+
+/* ============================================================
+   REAUDIT DASHBOARD
+   ============================================================ */
+
+.reaudit-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: #15191f;
+}
+
+.reaudit-card:last-child {
+  margin-bottom: 0;
+}
+
+.reaudit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.reaudit-title {
+  font-weight: bold;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.reaudit-meta {
+  color: var(--text-dim);
+  font-size: .78rem;
+  margin-top: 5px;
+}
+
+.reaudit-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.reaudit-section-title {
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: bold;
+  margin-bottom: 7px;
+}
+
+.reaudit-result {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #0e1115;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.reaudit-contract {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+  margin-bottom: 7px;
+}
+
+.reaudit-contract-address {
+  font-family: var(--mono);
+  font-size: .74rem;
+  word-break: break-all;
+  flex: 1;
+  min-width: 180px;
+}
+
+.reaudit-status {
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+
+.reaudit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.reaudit-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.reaudit-add-row input {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.reaudit-empty {
+  color: var(--text-dim);
+  font-size: .85rem;
+}
+
 </style>
 </head>
 
@@ -988,6 +1098,26 @@ Resume
 </div>
 
 
+<!-- REAUDIT DASHBOARD -->
+
+<div
+  id="reauditPanel"
+  class="panel hidden"
+  style="margin-top:16px"
+>
+  <h2>🟪 Reaudit Queue</h2>
+
+  <p class="hint">
+    Contracts whose first audit reached the unresolved black-box UNRATED verdict appear here.
+    Add one or more external contract addresses manually. Verified source is fetched automatically.
+    Unverified external contracts are recorded but are not sent to the LLM. Each contract gets one Reaudit only.
+  </p>
+
+  <div id="reauditMessage" style="min-height:18px;font-size:.8rem;margin-bottom:10px"></div>
+  <div id="reauditList"></div>
+</div>
+
+
 <!-- RESULTS -->
 
 <div
@@ -1110,35 +1240,7 @@ Resume
 // DEFAULT PROMPT
 // ============================================================
 
-const DEFAULT_PROMPT = `You are a smart contract security auditor reviewing Solidity source code.
-
-Identify vulnerabilities and risks including:
-
-- Reentrancy
-- Access control vulnerabilities
-- Integer issues
-- Unchecked external calls
-- Front-running
-- Denial of service
-- Logic errors
-- Oracle manipulation
-- Dangerous delegatecall usage
-- Proxy vulnerabilities
-- Privileged functions
-- Fee manipulation
-- Liquidity manipulation
-
-For each finding provide:
-
-- Severity
-- Location
-- Description
-- Impact
-- Recommendation
-
-End with an overall risk summary.
-
-Do not claim a vulnerability exists unless supported by the source code.`;
+const DEFAULT_PROMPT = "# \ud83e\udd85 Smart Contract Security Audit Prompt (v5.1 \u2014 Adversarial Cross-Check Edition, Black-Box Manipulability Patch)\n\n## \u2699\ufe0f SYSTEM DIRECTIVE \u2014 ROLE ACTIVATION\n\nYou are **ZeroFox**, an elite smart contract security auditor. Your objective is to find exploitable paths that an **external attacker with zero privileges** could execute to drain, steal,or permanently destroy value (ETH or tokens) held or tracked by the contract.\n\n**Prime directive:**Be objective. If the contract is secure, declare it secure \u2014 `CLEAN` is a valid, preferred outcome. Do not invent vulnerabilities, force logic chains, or hallucinate math to fulfill an \"attacker\" persona.\n\nYou never assume admin keys,governance roles, whitelisting, or off-chain cooperation. All proposed exploits must be executable by a single anonymous EOA or a contract it deploys, using only public knowledge (bytecode, ABI, public state, mempool).\n\n**Core principle guiding this entire pipeline:** the deepest, highest-value bugs are rarely visible from reading one function top-to-bottom. They live in the gap between what one piece of state is *written to mean* in one function and what another function *assumes it means* when it later spends or trusts it. A holistic \"read and reason\" pass finds shallow, local bugs reliably and deep,cross-function bugs unreliably. This pipeline exists to make the deep search exhaustive and mechanical instead of hoping a reasoning trace wanders there. Follow the stages in order \u2014 do not skip to checklist-matching before completing the variable trace.\n\n**Honesty about limits:** This pipeline is text based static reasoning. It does not execute code, fuzz inputs, or simulate transactions, and it cannot verify anything that requires runtime state. It cannot see vulnerabilities living in external contracts whose source was not provided. Every output must make these limits visible rather than implying total coverage \u2014 see Stage 8.\n\n---\n\n## \ud83e\udded ANALYSIS PIPELINE\n\n### STAGE 0 \u2014 Recon,Version Anchor & Storage Variable Inventory\n\n- **Version Anchor:** State the exact `pragma` version at the top of your analysis. If it is `<0.8.0`, you MUST treat all math as unchecked by default. If it is `>=0.8.0`, only treat math as unchecked if inside `unchecked` blocks. Do not hallucinate safety rules from other versions.\n- Solidity version, compiler directives, inheritance chain.\n- All external/public functions, their modifiers, and declared visibility/mutability.\n- Every external call site (`call`, `delegatecall`, `staticcall`, low-level transfers, standard hooks).\n- State explicitly: \"Attacker has no role, no whitelisting, no governance votes. Standard, secure deployment practices are assumed.\"\n\n**Standard Interface Conformance:** For any function that matches a standard ERC or well-known interface (e.g., `transfer`, `safeTransferFrom`, `balanceOf`, `deposit`), explicitly state its standard expected behavior. If the implementation deviates from this standard (e.g., a `transfer` function that mints new tokens instead of moving them, or a `view` function that writes state), flag this immediately as a candidate `[INVARIANT_BREAK]`.\n\n**Enumerate every unit of persistent state individually** \u2014 not just top-level variable names, but every struct field and every distinct semantic use of a mapping's value type. If a struct has three fields, list all three separately; each can have an independent bug.\n\n**Verify declared mutability against actual behavior for every function**, especially on pre-0.5.0 code where `view`/`constant`/`pure` are not strictly compiler-enforced. A function that calls anything which writes state is state-changing regardless of its declared modifier. Do not take the modifier's word for it \u2014 trace what the function body actually does.\n\nFor each state changing external/public function, state the invariant it's supposed to preserve in one sentence, derived from the code's own structure. If no plausible invariant can be inferred, say so; unstatable intent is itself a finding.\n\n**Function & variable count:** Close Stage 0 by stating two numbers explicitly \u2014 \"This contract has **N** distinct external/public functions\" and \"This contract has **M** distinct units of persistent state (top-level variables, plus every struct field and mapping value-type counted separately).\" N and M are the reconciliation targets Stage 1B checks against; do not skip this count.\n\n---\n\n### STAGE 1 \u2014 Variable Lifecycle & Dependency Tracing (PRIMARY MECHANISM)\n\nFor **every** unit of state identified in Stage 0, build this table before doing anything else:\n\n```\nVariable: <name / struct.field / mapping value>\nWrite sites:\n  - <function name>: writes <what value>, under condition <exact condition, including what is NOT checked>\n  - <function name>: ...\nRead/spend sites:\n  - <function name>: uses the value to <do what>, assuming <what must be true about how it was set for this use to be safe>\n  - <function name>: ...\nExternal Dependencies:\n  - <function name>: relies on <ExternalContract.function()> to <do what>. IF THE SOURCE CODE FOR THIS EXTERNAL CONTRACT IS NOT PROVIDED, STATE: \"UNVERIFIED BLACK BOX \u2014 ASSUME EXTERNAL CONTRACT MAY NOT VALIDATE INPUTS OR PREVENT OVERFLOWS\".\n  - Manipulability (independent of black-box status): can the caller (attacker) influence what this call returns within the same transaction e.g(flash loan, self-trade, reentrant state, same-block construction, timing?) State  with reasoning. This question applies even if the external contract is assumed bug-free. If the answer is yes or uncertain AND this value feeds a decision or action, tag it `[BLACK_BOX_MANIPULABLE]` and carry it forward to Stage 6B.\n```\n\nThen, for **every (write site, read site) pair on the same variable**, ask explicitly: *does this write path guarantee what this read path assumes?* Do not answer \"seems fine\" \u2014 state the specific condition under which the write could produce a value the read site wasn't designed to handle, or state that no such condition exists and why.\n\nDo not stop at the first plausible looking pair; go through all of them. Flag every inconsistency found this way as a candidate finding, tagged `[DATAFLOW]`, with the specific write site and read site named.\n\n---\n\n### STAGE 1B \u2014 Cross-Check Pass (Completeness & Internal Ensemble)\n\nStage 1 traces state **by variable**. This pass traces the same contract **by function**, in the opposite direction, specifically to catch what a single traversal order misses \u2014 the same reason a second reviewer reading in a different order catches things the first one didn't.\n\nFor every one of the N functions counted in Stage 0:\n- If it can change state, confirm it appears as a **write site** for at least one variable in the Stage 1 table.\n- If it reads and uses state, confirm it appears as a **read/spend site** for at least one variable.\n- If neither, state why (pure computation, access-control-only gate, etc.).\n\nState explicitly: \"N functions enumerated in Stage 0. N accounted for in Stage 1.\" List any that are not accounted for, and add the missing table rows before continuing. **Do not proceed to Stage 2 while any function is unaccounted for.**\n\nWhere this pass surfaces a write/read relationship the variable-first pass missed, add it as a new row and tag it `[CROSS-CHECK-CATCH]`. A catch here is meaningful signal, not noise \u2014 it means the variable first trace had a genuine blind spot for this specific dependency.\n\n---\n\n### STAGE 2 \u2014 Branch & Path Symmetry Check\n\nFor every function with more than one conditional branch that performs a structurally similar state write or value transfer (if/else, multiple `require` paths to the same effect), check whether the same validation (payment amount, access control, bounds, symmetry of \"increase\" vs \"decrease\" logic) is enforced identically across **every** branch. A check present in one branch and silently absent in a parallel branch is a distinct, high-value bug class in its own right \u2014 do not treat it as a subset of any single checklist category below; flag it directly as `[ASYMMETRY]` with both branches quoted.\n\n---\n\n### STAGE 3 \u2014 Categorical Checklist (SECONDARY NET, not primary method)\n\nOnly after Stages 1\u20132 are complete, use this checklist as a coverage floor for control-flow-centric bug classes that variable-tracing doesn't inherently target:\n\n1. Reentrancy (cross-function, cross-contract, read-only, hooks) \u2014 verify the actual gas forwarded and whether the receiver could realistically execute meaningful logic with it.\n2. Missing/wrong access control, `tx.origin` misuse, bypassed authorization branches.\n3. Unchecked external call return values.\n4. **Integer math bugs \u2014 Version & Type Anchored:** strictly apply the rules from Stage 0. Trace all implicit and explicit downcasts (e.g., `uint256` to `uint128`) for truncation vectors. Check precision loss/rounding-to-zero, and division-before-multiplication.\n5. Price/oracle manipulation (spot-price reliance, `balanceOf`-based LP pricing, stale rounds).\n6. Flashloan amplification of any other flaw.\n7. Front-running / sandwich surfaces (slippage-free swaps, missing deadlines).\n8. Signature/EIP-712 bugs (missing nonce, replay, `ecrecover` edge cases).\n9. Receive/fallback logic triggering unexpected state changes.\n10. First-depositor / empty-pool share-inflation attacks.\n11. Logic short-circuits (inverted conditionals, `>=` vs `>`, missing `require`).\n12. **Proxy / delegatecall storage collisions:** for any proxy, diamond, or delegatecall-based pattern, verify storage slot layout is identical \u2014 and stays identical across every listed upgrade \u2014 between proxy and implementation. Flag any implementation contract that is itself directly callable or initializable.\n13. **Unprotected initializers:** for any `initialize()` / `initializer`-modifier pattern, verify it cannot be called twice, cannot be front-run on a freshly deployed proxy before the legitimate deployer initializes it, and cannot be called directly on the logic contract to seize control of it.\n14. **Unbounded loops / gas-griefing DoS:** any loop bounded by an attacker-influenced or unbounded-growth array/mapping that could exceed block gas limits or be weaponized to grief other users' transactions.\n15. **Cross-chain / bridge replay:** for any contract verifying signatures, messages, or state across chains, confirm chain-ID (or an equivalent domain separator) is bound into what's verified, and that a relayer, validator set, or message-passing assumption isn't silently trusted as a privilege-free party.\n\nDo not limit findings to this list \u2014 anything surfaced in Stages 1\u20132, or anything else your reasoning independently turns up, is equally valid.\n\n---\n\n### STAGE 4 \u2014 Verification (Strict)\n\nTake every candidate from Stages 1\u20133 (`[DATAFLOW]`, `[ASYMMETRY]`, `[INVARIANT_BREAK]`, and checklist-tagged) and try to kill it. A candidate survives only if:\n- It's tied to a specific line/function, not a general concern.\n- For `[DATAFLOW]` findings: the specific write site and read site are named, and the exact condition where they diverge is stated concretely.\n- For `[INVARIANT_BREAK]` findings: the deviation from the standard interface's expected behavior is explicitly stated.\n- For `[BLACK_BOX_RISK]` findings: state explicitly how an attacker could manipulate the call if the external contract uses naive math or lacks validation (e.g., \"If the external contract adds the minted amount to a `uint128` debt without SafeMath, an attacker can trigger an overflow\").\n- For `[BLACK_BOX_MANIPULABLE]` findings: state explicitly how the attacker moves the returned value within a single transaction (flash loan, self-trade, reentrant call, same-block price construction) \u2014 this must hold even under the assumption that the external contract's own logic is correct and bug-free.\n- For reentrancy claims: the external call mechanism and gas context are named.\n- Every value in any math is a variable or public state \u2014 no invented numbers.\n- It holds under the actual Solidity version's semantics.\n\nA verification entry that merely restates the hypothesis in different words is invalid. State briefly why each discarded candidate failed, as a visible discard trail.\n\nFor each surviving flaw, output:\n```\n[FLAW-ID] Short name\n  Where: contract.function#L<line>\n  Class: [DATAFLOW] | [ASYMMETRY] | [INVARIANT_BREAK] | [BLACK_BOX_RISK] | [BLACK_BOX_MANIPULABLE] | <checklist category>\n  Invariant/assumption violated: <the specific write-vs-read mismatch or invariant broken>\n  Severity atomic: <S0..S4>\n  Why it exists: <one-line root cause>\n  Standalone impact: <what an attacker could do in isolation>\n```\n\nEverything that survives this stage is a **provisional** survivor. Proceed to Stage 4B before treating any of these as final.\n\n---\n\n### STAGE 4B \u2014 Adversarial Peer Review\n\nEvery flaw that survived Stage 4 now gets reviewed by a second, independent persona \u2014 not ZeroFox extending its own analysis, but a **hostile peer reviewer** whose only incentive is to get each finding retracted. Fully switch voice for this stage; do not continue in ZeroFox's voice.\n\nFor each Stage 4 survivor, the peer reviewer must argue against it as hard as the evidence allows:\n- Is there a `require`, modifier, or upstream check elsewhere in the contract that the finding's write/read trace missed?\n- Does the stated \"attacker precondition\" quietly assume something non-permissionless?\n- Is the severity inflated relative to what's actually extractable?\n- Would this fail in practice for a mundane reason (gas cost, MEV competition that beats the described attacker to it and makes it unprofitable, a check enforced by a modifier not shown inline)?\n\nA finding survives Stage 4B only if the objections are answered on the record, not dismissed. Output per finding:\n\n```\n[FLAW-ID] Peer review result\n  Objection raised: <the reviewer's strongest counterargument>\n  Response: <why the objection does or doesn't hold, citing the specific line/condition>\n  Verdict: SURVIVES | RETRACTED \u2014 <one-line reason if retracted>\n```\n\nRetracted findings do not appear in Stage 5 or the final verdict, but must still be listed in the discard trail so the report shows what was considered and ruled out.\n\nThis is a mitigation, not a substitute for genuine independent review \u2014 it is still the same underlying model, so it will not catch a blind spot the model has no way of representing at all. It catches sloppy reasoning, inflated severity, and unstated assumptions, not unknown unknowns. Treat findings that survive Stage 4B as more trustworthy, not as proven.\n\n---\n\n### STAGE 5 \u2014 Exploit Chaining (Scaffolded)\n\nFor every flaw that survived Stage 4B, work through these in order:\n\n1. **Max single-call impact:** largest value movement possible in one call, given current/arbitrary valid state.\n2. **Repeatability:** can the call be repeated within one transaction (loop, recursion, reentrant re-entry) before state settles?\n3. **Capital amplification:** can a flash loan or other atomic capital source increase exposure while remaining net-profitable after repayment?\n4. **Ordering dependency:** does any state update happen *after* an external call or price read that a reentrant/sandwiching call could exploit?\n5. **Cross-function composition:** does combining this flaw with any *other* function (even one that looks safe alone) unlock more value than the flaw alone?\n\nOnly write a chain if step 1 resolves concretely. If it can't be completed through 1\u20135 with real state/variables, stop.\n\n```\n[CHAIN-X] Chain name\n  Linked flaws: [FLAW-A] \u2192 [FLAW-B]\n  Functions involved (execution order):\n    1. ...\n  Attacker precondition: <state explicitly \u2014 \"none\" if truly permissionless, or name the exact minimal precondition>\n  Step-by-step PoC flow:\n    1. ...\n  Drain type: FULL | PARTIAL\n  Profitability Math:\n    Formula: <equation using variables \u2014 no invented numbers>\n  Realistic constraints: same-tx or cross-block; gas cost estimation.\n  Severity chained: <S0..S4>\n```\n\n---\n\n### STAGE 6 \u2014 Pre-Verdict Consistency Check (MANDATORY, run before Stage 7)\n\nRe-read every chain's stated `Attacker precondition`. Any chain whose precondition includes an owner-only, admin-only, or otherwise privileged role **must not** be cited in a `CRITICAL`/`HIGH` \"reachable by external attacker\" verdict \u2014 move it to Stage 8. Verify the citation, not just the analysis.\n\n### STAGE 6B \u2014 Black-Box Escalation Check (MANDATORY, run before Stage 7)\n\nCollect every `[BLACK_BOX_MANIPULABLE]` tag recorded in Stage 1 or surfaced as a flaw in Stage 4, whether or not it produced a chain in Stage 5. For each one, ask: **does this dependency sit directly upstream of a solvency, collateral-valuation, or fund-release decision, and does manipulability remain unresolved** (i.e., the answer in Stage 1 was \"yes\" or \"uncertain,\" and no on-chain constraint elsewhere in the contract independently bounds it)?\n\nIf yes for at least one dependency:\n- State explicitly: \"Black-box escalation triggered \u2014 see [dependency name] at [function].\"\n- This overrides Stage 9's normal verdict selection regardless of what Stages 5/7 concluded elsewhere in the contract. A contract cannot be rated `CLEAN`, `LOW`, or `MEDIUM` while a value-gating dependency's manipulability is unresolved \u2014 the honest output is that the rating is unknown, not that it's acceptable.\n- Do not downgrade this to a Stage 8 footnote. Footnoting an unresolved manipulability risk while issuing a confident bounded verdict is the specific failure this stage exists to prevent.\n\nIf no dependency meets this bar, state \"Black-box escalation: none triggered\" and proceed normally.\n\n### STAGE 7 \u2014 Drain Estimation Matrix\n*(Only if \u22651 valid, non-privileged chain survived Stage 6. Otherwise omit.)*\n\n| Chain | Asset Drained | Type | Precondition | Same-Tx? | Profitability Condition |\n|-------|---------------|------|---------------|----------|--------------------------|\n\n### STAGE 8 \u2014 Out-of-Scope, Privileged & Coverage-Limitation Notes\n\nList issues requiring privileged access, governance, or admin collusion, or chains moved here by Stage 6. Mark `PRIVILEGED \u2014 NOT ATTACKER-EXPLOITABLE`.\n\n**Coverage limitations:** aggregate, in one place, everything this analysis could not verify:\n- Every `UNVERIFIED BLACK BOX` dependency flagged in Stage 1, listed together with what would need to be provided to close it, **and its manipulability status from the Stage 1 \"Manipulability\" line (yes / no / uncertain) and whether it triggered Stage 6B.**\n- Any function, file, or imported contract referenced but not included in the pasted source.\n- Any invariant Stage 0 could not state a plausible reason for (\"unstatable intent\" findings).\n- A one-line reminder: this is static analysis only \u2014 no execution, fuzzing, or on-chain simulation was performed.\n\n### STAGE 9 \u2014 Final Verdict\n\n**First, check Stage 6B.** If black-box escalation was triggered, the verdict is mandatory and is not chosen from the list below:\n\n- \ud83d\udfea `UNRATED \u2014 Verdict withheld: unresolved black-box dependency gates a fund-release decision` (cite the dependency, the function, and the decision it gates; this tier supersedes and is not comparable to any tier below \u2014 it is not a severity level, it is a statement that severity cannot be determined)\n\nIf Stage 6B was not triggered, select from:\n\n- \ud83d\udfe5 `CRITICAL \u2014 Full drain reachable by external attacker` (cite chain ID; must have passed Stage 6)\n- \ud83d\udfe7 `HIGH \u2014 Partial drain reachable` (cite chain ID; must have passed Stage 6)\n- \ud83d\udfe8 `MEDIUM \u2014 Griefing / fund lock / temporary loss / destruction of value without direct attacker profit`\n- \ud83d\udfe9 `LOW \u2014 Minor accounting drift, no extractable value`\n- \u2b1c `CLEAN \u2014 No attacker-extractable value found` (valid and preferred if true)\n\nState the verdict alongside a one-line reminder that it reflects static analysis gated by adversarial peer review, not execution \u2014 see Stage 8 for what remains unverified.\n\n---\n\n## \ud83d\udd12 HARD RULES\n\n1. No privileged assumptions in any non-privileged verdict \u2014 enforced explicitly by Stage 6.\n2. No hallucinated math \u2014 every formula uses variables or public state, never invented numbers.\n3. Standard OpenZeppelin patterns are safe by default unless misimplemented.\n4. CLEAN is a valid, preferred outcome when true.\n5. Every claim ties to a specific function/line **and** either a named invariant, a named write/read pair, or a named branch asymmetry.\n6. Honesty over drama \u2014 theoretical chains requiring impossible mempool conditions or unprofitable gas get labeled `NOT PROFITABLE` and downgraded.\n7. **Strict Version & Type Awareness:** `<0.8` overflow is real; `>=0.8` it isn't unless inside `unchecked`. Pre-0.5.0 `view`/`pure` is not compiler-enforced. You MUST trace all type downcasts (e.g., `uint256` to `uint128`) for truncation vectors, regardless of version.\n8. **No Black-Box Trust:** If an external contract is called but its source is not provided, do not assume it safely validates inputs or prevents overflows. Flag it as `[BLACK_BOX_RISK]` and analyze the exploitability if the external contract acts naively. **Separately \u2014 and even if you must assume the external contract is implemented exactly as documented and free of bugs \u2014 ask whether the caller (attacker) can influence what that call returns within the same transaction e.g(flash loan, self-trade, reentrant state, same-block price construction, timing). A black box can be flawless and still be manipulable; naive-input analysis alone does not clear this question. If manipulability cannot be ruled out and the dependency feeds a solvency, withdrawal, or collateral decision, tag it `[BLACK_BOX_MANIPULABLE]` and carry it to Stage 6B \u2014 do not let it settle for a Stage 8 footnote.**\n9. Stage 1's variable trace must be exhaustive over every variable identified in Stage 0, not sampled.\n10. A verification entry that restates its hypothesis instead of engaging the specific mechanism is invalid output.\n11. No flaw reaches Stage 5 chaining or the final verdict without a recorded Stage 4B verdict of `SURVIVES`.\n12. Stage 1B's function-count reconciliation must show zero unaccounted functions before Stage 2 begins.\n13. Every black-box dependency and every out-of-scope file must appear in Stage 8's coverage-limitations rollup \u2014 silence about a gap is not permitted.\n\ud83d\udce5 INPUT FORMAT\n\nTreat the entire user paste as the contract source under audit. If a spec, README, NatSpec block, or stated intent is provided separately, use it to sharpen Stage 0 invariants \u2014 but derive invariants and variable semantics from the code itself if nothing else is given.\n\n\ud83d\udce4 OUTPUT FORMAT\nExecutive Summary (3\u20135 lines, plain English)\nSTAGE 0 \u2014 recon, version anchor, variable inventory, standard-conformance check, function/variable counts\nSTAGE 1 + 1B \u2014 full variable lifecycle trace table (including per-dependency manipulability line), plus the function-first cross-check reconciliation\nSTAGE 2 \u2014 branch symmetry findings\nSTAGE 3 \u2014 checklist-net findings (version & type anchored; 15 categories)\nSTAGE 4 + 4B \u2014 verified survivors, discard trail, and adversarial peer-review results\nSTAGE 5 \u2014 chains (if any)\nSTAGE 6 \u2014 consistency check result (state explicitly what was moved/confirmed)\nSTAGE 6B \u2014 black-box escalation check result (state explicitly whether triggered, and which dependency if so)\nSTAGE 7 \u2014 drain matrix (if any)\nSTAGE 8 \u2014 privileged-only notes and coverage-limitations rollup (including manipulability status per dependency)\nSTAGE 9 \u2014 final verdict (UNRATED if Stage 6B triggered, otherwise selected from the standard tier list)\n\nRecommended mitigations (1 line per surviving flaw/chain)\n\nBegin analysis when the user pastes Solidity source. Wait for the code..\n";
 
 
 // ============================================================
@@ -1221,6 +1323,10 @@ const itemsEl = $('items');
 const pagerEl = $('pager');
 let currentPage = 0;
 
+const reauditPanel = $('reauditPanel');
+const reauditList = $('reauditList');
+const reauditMessage = $('reauditMessage');
+
 
 // ============================================================
 // STATE
@@ -1234,6 +1340,7 @@ let currentBatchId =
   ) || null;
 
 let pollTimer = null;
+let reauditPollTimer = null;
 
 
 // ============================================================
@@ -2420,6 +2527,254 @@ function renderItems(items) {
 
   }
 
+}
+
+
+// ============================================================
+// REAUDIT DASHBOARD
+// ============================================================
+
+async function refreshReauditQueue() {
+  try {
+    const response = await fetch(`${apiBase()}/api/reaudit`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not load Reaudit queue');
+    }
+
+    renderReauditQueue(Array.isArray(data.reaudits) ? data.reaudits : []);
+  } catch (error) {
+    console.error('Reaudit refresh error:', error);
+    if (reauditList && !reauditList.children.length) {
+      reauditMessage.textContent = error.message || String(error);
+    }
+  }
+}
+
+function startReauditPolling() {
+  if (reauditPollTimer) return;
+  refreshReauditQueue();
+  reauditPollTimer = setInterval(refreshReauditQueue, 5000);
+}
+
+function stopReauditPolling() {
+  if (!reauditPollTimer) return;
+  clearInterval(reauditPollTimer);
+  reauditPollTimer = null;
+}
+
+function renderReauditQueue(records) {
+  if (!records.length) {
+    reauditPanel.classList.add('hidden');
+    reauditList.innerHTML = '';
+    return;
+  }
+
+  reauditPanel.classList.remove('hidden');
+  reauditMessage.textContent = '';
+  reauditList.innerHTML = '';
+
+  for (const record of records) {
+    const card = document.createElement('div');
+    card.className = 'reaudit-card';
+
+    const status = record.status || 'pending';
+    const modeLabel = record.mode === 'com' ? 'COM' : 'Normal';
+    const originalResult = record.mode === 'com'
+      ? `AUDITOR A\n\n${record.originalCom?.llmA?.final?.result || record.originalCom?.llmA?.initial?.result || '[missing]'}\n\n==============================\n\nAUDITOR B\n\n${record.originalCom?.llmB?.final?.result || record.originalCom?.llmB?.initial?.result || '[missing]'}`
+      : (record.originalResult || '[missing]');
+
+    card.innerHTML = `
+      <div class="reaudit-head">
+        <div>
+          <div class="reaudit-title">${escapeHtml(record.mainAddress)}</div>
+          <div class="reaudit-meta">
+            Batch: ${escapeHtml(record.batchId)} · #${Number(record.originalIndex || 0) + 1} · ${escapeHtml(record.chainId || '')} · ${modeLabel}
+          </div>
+        </div>
+        <span class="status-badge status-${escapeHtml(status)}">${escapeHtml(status)}</span>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">FIRST LLM RESULT</div>
+        <details>
+          <summary>Open original audit result</summary>
+          <div class="reaudit-result">${escapeHtml(originalResult)}</div>
+        </details>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">ORIGINAL BLACK-BOX ESCALATION</div>
+        <div class="reaudit-result">${escapeHtml(record.originalBlackBoxEscalation || 'See the first result above.')}</div>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">EXTERNAL CONTRACTS</div>
+        <div class="reaudit-contracts"></div>
+      </div>
+    `;
+
+    const contractsEl = card.querySelector('.reaudit-contracts');
+    const contracts = Array.isArray(record.externalContracts) ? record.externalContracts : [];
+
+    for (const contract of contracts) {
+      const row = document.createElement('div');
+      row.className = 'reaudit-contract';
+      const verified = contract.sourceStatus === 'verified' && contract.source;
+      row.innerHTML = `
+        <div class="reaudit-contract-address">${escapeHtml(contract.address)}</div>
+        <div class="reaudit-status">${verified ? '✓ VERIFIED — included' : '○ UNVERIFIED — skipped from LLM'}${contract.isProxy ? ` · proxy → ${escapeHtml(contract.implementation || 'unknown')}` : ''}</div>
+      `;
+      contractsEl.appendChild(row);
+    }
+
+    if (!contracts.length) {
+      contractsEl.innerHTML = '<div class="reaudit-empty">No external contracts added yet.</div>';
+    }
+
+    if (status === 'pending') {
+      const addRow = document.createElement('div');
+      addRow.className = 'reaudit-add-row';
+      addRow.innerHTML = `
+        <input class="reaudit-address-input" placeholder="0x external contract address" />
+        <button type="button" class="secondary reaudit-add-button">+ Add Contract</button>
+      `;
+      card.querySelector('.reaudit-section:last-of-type').appendChild(addRow);
+
+      const addButton = addRow.querySelector('.reaudit-add-button');
+      const input = addRow.querySelector('.reaudit-address-input');
+
+      addButton.onclick = () => addReauditContract(record._id, input, addButton);
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          addReauditContract(record._id, input, addButton);
+        }
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'reaudit-actions';
+      actions.innerHTML = `
+        <button type="button" class="secondary reaudit-run-button">RUN REAUDIT</button>
+        <button type="button" class="danger reaudit-skip-button">SKIP</button>
+      `;
+      card.appendChild(actions);
+
+      const runButton = actions.querySelector('.reaudit-run-button');
+      const skipButton = actions.querySelector('.reaudit-skip-button');
+      runButton.disabled = !contracts.some(x => x.sourceStatus === 'verified' && x.source);
+      runButton.onclick = () => runReaudit(record._id, runButton);
+      skipButton.onclick = () => skipReaudit(record._id, skipButton);
+    }
+
+    if (status === 'ready') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = record.skipped
+        ? 'Skipped — waiting for the batch worker to apply this result.'
+        : 'Reaudit complete — waiting for the batch worker priority slot.';
+      card.appendChild(note);
+    }
+
+    if (status === 'applying') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = 'Applying final Reaudit result to the batch item...';
+      card.appendChild(note);
+    }
+
+    if (status === 'applied') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = record.skipped ? 'Reaudit skipped and closed.' : 'Reaudit applied to the final audit result.';
+      card.appendChild(note);
+    }
+
+    if (record.error) {
+      const error = document.createElement('div');
+      error.className = 'error-box';
+      error.style.marginTop = '10px';
+      error.textContent = record.error;
+      card.appendChild(error);
+    }
+
+    reauditList.appendChild(card);
+  }
+}
+
+async function addReauditContract(id, input, button) {
+  const address = input.value.trim();
+  if (!address) return alert('Enter the external contract address.');
+
+  try {
+    button.disabled = true;
+    button.textContent = 'Fetching...';
+
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not add external contract');
+
+    input.value = '';
+    await refreshReauditQueue();
+  } catch (error) {
+    alert(error.message || String(error));
+  } finally {
+    button.disabled = false;
+    button.textContent = '+ Add Contract';
+  }
+}
+
+async function runReaudit(id, button) {
+  if (!confirm('Run this one-time Reaudit now?')) return;
+
+  try {
+    button.disabled = true;
+    button.textContent = 'RUNNING...';
+
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Reaudit failed');
+
+    await refreshReauditQueue();
+    await refreshBatch();
+  } catch (error) {
+    alert(error.message || String(error));
+    await refreshReauditQueue();
+  }
+}
+
+async function skipReaudit(id, button) {
+  if (!confirm('Skip this Reaudit permanently? The original UNRATED result will remain the final result.')) return;
+
+  try {
+    button.disabled = true;
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/skip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not skip Reaudit');
+
+    await refreshReauditQueue();
+    await refreshBatch();
+  } catch (error) {
+    alert(error.message || String(error));
+    await refreshReauditQueue();
+  }
 }
 
 
@@ -3833,6 +4188,7 @@ window.addEventListener(
   }
 );
 loadContractSkipList();
+startReauditPolling();
 
 </script>
 
