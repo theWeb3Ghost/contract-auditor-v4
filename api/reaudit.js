@@ -410,7 +410,9 @@ async function runReaudit(req, res) {
     if (!claim) return res.status(409).json({ ok: false, error: 'Reaudit was already claimed.' });
 
     const batch = await db.collection('batches').findOne({ batchId: record.batchId });
-    const item = await db.collection('batch_items').findOne({ _id: require('mongodb').ObjectId(record.auditId) });
+    const item = await db.collection('batch_items').findOne({
+  _id: new (require('mongodb').ObjectId)(record.auditId)
+});
     if (!batch || !item) throw new Error('Parent batch item no longer exists');
 
     const evidence = verifiedEvidence(record);
