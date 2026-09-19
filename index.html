@@ -2565,12 +2565,50 @@ function stopReauditPolling() {
   reauditPollTimer = null;
 }
 
+let lastReauditSignature = null;
+
+function reauditSignature(records) {
+  // Ignore huge source blobs; only real state changes should trigger a redraw.
+  return JSON.stringify(records, (key, value) =>
+    (key === 'source' || key === 'mainSource')
+      ? (value ? String(value).length : 0)
+      : value
+  );
+}
+
 function renderReauditQueue(records) {
   if (!records.length) {
+    lastReauditSignature = null;
     reauditPanel.classList.add('hidden');
     reauditList.innerHTML = '';
     return;
   }
+
+  // Polling fires every 5s. If nothing changed, do NOT rebuild the DOM,
+  // otherwise the page jumps to the top and inner scroll boxes reset.
+  const signature = reauditSignature(records);
+  if (signature === lastReauditSignature && reauditList.children.length) {
+    return;
+  }
+  lastReauditSignature = signature;
+
+  // ---- Snapshot UI state before the rebuild ----
+  const pageScrollY = window.scrollY;
+  const savedInner = {};   // "<recordId>:<n>" -> scrollTop of each result box
+  const savedInputs = {};  // recordId -> { value, focused }
+  reauditList.querySelectorAll('.reaudit-card[data-card-id]').forEach(card => {
+    const id = card.dataset.cardId;
+    card.querySelectorAll('.reaudit-result').forEach((el, n) => {
+      savedInner[`${id}:${n}`] = el.scrollTop;
+    });
+    const input = card.querySelector('.reaudit-address-input');
+    if (input) {
+      savedInputs[id] = {
+        value: input.value,
+        focused: document.activeElement === input
+      };
+    }
+  });
 
 reauditPanel.classList.remove('hidden');
 reauditMessage.textContent = '';
@@ -2587,6 +2625,7 @@ reauditList.innerHTML = '';
   for (const record of records) {
     const card = document.createElement('div');
     card.className = 'reaudit-card';
+    card.dataset.cardId = String(record._id);
 
     const status = record.status || 'pending';
     const modeLabel = record.mode === 'com' ? 'COM' : 'Normal';
@@ -2752,6 +2791,22 @@ card.appendChild(stageNote);
 
     reauditList.appendChild(card);
   }
+
+  // ---- Restore UI state after the rebuild ----
+  reauditList.querySelectorAll('.reaudit-card[data-card-id]').forEach(card => {
+    const id = card.dataset.cardId;
+    card.querySelectorAll('.reaudit-result').forEach((el, n) => {
+      const top = savedInner[`${id}:${n}`];
+      if (top) el.scrollTop = top;
+    });
+    const saved = savedInputs[id];
+    const input = card.querySelector('.reaudit-address-input');
+    if (saved && input) {
+      input.value = saved.value;
+      if (saved.focused) input.focus({ preventScroll: true });
+    }
+  });
+  window.scrollTo(0, pageScrollY);
 }
 
 async function addReauditContract(id, input, button) {
