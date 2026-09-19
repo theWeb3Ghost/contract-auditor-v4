@@ -3306,7 +3306,11 @@ async function startBatchWorker(
         // then be used while the batch remains alive.
         const waitingReaudit = await db.collection('reaudits').findOne({
           batchId,
-          status: { $in: ['pending', 'running', 'applying'] }
+          // 'ready' MUST be included: a Reaudit can flip running -> ready
+          // between the claim check above and this check. Without it the
+          // batch is marked completed and the worker exits, leaving the
+          // item stuck on reaudit_pending.
+          status: { $in: ['pending', 'running', 'ready', 'applying'] }
         });
 
         if (waitingReaudit) {
@@ -5632,9 +5636,15 @@ router.get(
 // EXPORTS
 // ============================================================
 
+function isWorkerActive(batchId) {
+  return activeWorkers.has(batchId);
+}
+
 module.exports = {
 
   router,
 
-  resumePendingBatches
+  resumePendingBatches,
+
+  isWorkerActive
 };

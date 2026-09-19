@@ -244,6 +244,8 @@ async function getReauditById(id) {
 async function listReaudits(req, res) {
   try {
     const db = await getDb();
+    // Unstick any 'ready' Reaudit whose batch has no worker.
+    await drainReadyReaudits().catch(e => console.error('[REAUDIT] drain failed:', e));
     const query = {};
     if (req.query.batchId) query.batchId = String(req.query.batchId);
     if (req.query.status) query.status = String(req.query.status);
@@ -556,6 +558,7 @@ async function runReaudit(req, res) {
       );
     }
 
+    await drainReadyReaudits(record.batchId).catch(e => console.error('[REAUDIT] drain failed:', e));
     return res.json({ ok: true, status: 'ready', message: 'Reaudit completed and queued for priority application by the batch worker.' });
   } catch (error) {
     try {
@@ -601,6 +604,7 @@ async function skipReaudit(req, res) {
 
     if (!claimed) return res.status(409).json({ ok: false, error: `Reaudit is already ${record.status}.` });
 
+    await drainReadyReaudits(record.batchId).catch(e => console.error('[REAUDIT] drain failed:', e));
     return res.json({ ok: true, status: 'ready', skipped: true, message: 'Reaudit skipped and queued for priority application.' });
   } catch (error) {
     return res.status(500).json({ ok: false, error: errorText(error) });
@@ -696,6 +700,48 @@ async function applyClaimedReaudit(record) {
 
   console.log(`[REAUDIT] Applied ${record.mainAddress} batch=${record.batchId} index=${record.originalIndex} skipped=${record.skipped}`);
   return { applied: true, skipped: Boolean(record.skipped) };
+}
+
+// Applying a finished Reaudit is only a DB write, so it must not depend on a
+// batch worker being alive. If the batch is paused / completed / cancelled (no
+// worker), nothing would ever claim the 'ready' record. This applies them
+// directly. When a worker IS active we leave it to the worker's priority slot.
+// claimReadyReaudit is atomic, so a worker and this function can never both
+// apply the same record.
+function workerIsActive(batchId) {
+  try {
+    return require('./batch').isWorkerActive(batchId);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function drainReadyReaudits(onlyBatchId = null) {
+  const db = await getDb();
+  const query = { status: 'ready', appliedAt: { $exists: false } };
+  if (onlyBatchId) query.batchId = onlyBatchId;
+
+  const batchIds = await db.collection('reaudits').distinct('batchId', query);
+  let applied = 0;
+
+  for (const batchId of batchIds) {
+    if (workerIsActive(batchId)) continue;
+
+    let record;
+    while ((record = await claimReadyReaudit(batchId))) {
+      const result = await applyClaimedReaudit(record);
+      if (result.applied) {
+        await db.collection('batches').updateOne(
+          { batchId },
+          { $inc: { completed: 1 }, $set: { updatedAt: now() } }
+        );
+        applied++;
+      }
+    }
+  }
+
+  if (applied) console.log(`[REAUDIT] Drained ${applied} ready Reaudit(s) with no active worker`);
+  return applied;
 }
 
 router.get('/', listReaudits);
