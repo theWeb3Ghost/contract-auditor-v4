@@ -2571,9 +2571,17 @@ function renderReauditQueue(records) {
     return;
   }
 
-  reauditPanel.classList.remove('hidden');
-  reauditMessage.textContent = '';
-  reauditList.innerHTML = '';
+reauditPanel.classList.remove('hidden');
+reauditMessage.textContent = '';
+
+// Remember which original audit reports are currently open
+reauditList.querySelectorAll('details[data-reaudit-id]').forEach(details => {
+  if (details.open) {
+    reauditOpenDetails.add(details.dataset.reauditId);
+  }
+});
+
+reauditList.innerHTML = '';
 
   for (const record of records) {
     const card = document.createElement('div');
@@ -2598,8 +2606,8 @@ function renderReauditQueue(records) {
 
       <div class="reaudit-section">
         <div class="reaudit-section-title">FIRST LLM RESULT</div>
-        <details>
-          <summary>Open original audit result</summary>
+        <details data-reaudit-id="${escapeHtml(String(record._id))}">
+  <summary>Open original audit result</summary>
           <div class="reaudit-result">${escapeHtml(originalResult)}</div>
         </details>
       </div>
@@ -2617,7 +2625,25 @@ function renderReauditQueue(records) {
 
     const contractsEl = card.querySelector('.reaudit-contracts');
     const contracts = Array.isArray(record.externalContracts) ? record.externalContracts : [];
+    const originalDetails = card.querySelector(
+  'details[data-reaudit-id]'
+);
 
+if (originalDetails && reauditOpenDetails.has(String(record._id))) {
+  originalDetails.open = true;
+}
+
+if (originalDetails) {
+  originalDetails.addEventListener('toggle', () => {
+    const id = String(record._id);
+
+    if (originalDetails.open) {
+      reauditOpenDetails.add(id);
+    } else {
+      reauditOpenDetails.delete(id);
+    }
+  });
+}
     for (const contract of contracts) {
       const row = document.createElement('div');
       row.className = 'reaudit-contract';
@@ -2642,6 +2668,10 @@ function renderReauditQueue(records) {
       `;
       card.querySelector('.reaudit-section:last-of-type').appendChild(addRow);
 
+
+      const hasVerifiedSource = contracts.some(
+      x => x.sourceStatus === 'verified' && x.source
+        );
       const addButton = addRow.querySelector('.reaudit-add-button');
       const input = addRow.querySelector('.reaudit-address-input');
 
@@ -2655,10 +2685,12 @@ function renderReauditQueue(records) {
 
       const actions = document.createElement('div');
       actions.className = 'reaudit-actions';
-      actions.innerHTML = `
-        <button type="button" class="secondary reaudit-run-button">RUN REAUDIT</button>
-        <button type="button" class="danger reaudit-skip-button">SKIP</button>
-      `;
+actions.innerHTML = `
+  <button type="button" class="secondary reaudit-run-button">
+    ${hasVerifiedSource ? 'RUN REAUDIT' : 'ADD VERIFIED CONTRACT FIRST'}
+  </button>
+  <button type="button" class="danger reaudit-skip-button">SKIP</button>
+`;
       card.appendChild(actions);
 
       const runButton = actions.querySelector('.reaudit-run-button');
@@ -2666,6 +2698,21 @@ function renderReauditQueue(records) {
       runButton.disabled = !contracts.some(x => x.sourceStatus === 'verified' && x.source);
       runButton.onclick = () => runReaudit(record._id, runButton);
       skipButton.onclick = () => skipReaudit(record._id, skipButton);
+
+
+      const stageNote = document.createElement('div');
+stageNote.className = 'reaudit-status';
+stageNote.style.marginTop = '10px';
+
+if (hasVerifiedSource) {
+  stageNote.textContent =
+    'Verified external source available — click RUN REAUDIT to continue.';
+} else {
+  stageNote.textContent =
+    'Waiting for at least one verified external contract source.';
+}
+
+card.appendChild(stageNote);
     }
 
     if (status === 'ready') {
