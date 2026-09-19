@@ -388,6 +388,39 @@ function batchItemSource(record) {
   return String(record.mainSource || '');
 }
 
+// Returns the main contract's source. Older COM reaudits were created before
+// batch_items.source was persisted, so fall back to the item, then re-fetch
+// from the explorer, and save the healed value so this only happens once.
+async function resolveMainSource({ db, record, item, batch }) {
+  const existing = String(record.mainSource || item?.source || '').trim();
+  if (existing) return existing;
+
+  const address = record.auditedAddress || record.mainAddress;
+  if (!batch?.etherscanKey) {
+    throw new Error('Main contract source is missing and this batch has no saved Etherscan key to re-fetch it.');
+  }
+
+  const fetched = await fetchExternalContract({
+    address,
+    chainId: record.chainId || String(batch.chainId || '1'),
+    etherscanKey: batch.etherscanKey
+  });
+
+  if (fetched.sourceStatus !== 'verified' || !fetched.source) {
+    throw new Error(`Main contract source is missing and could not be re-fetched for ${address}.`);
+  }
+
+  await db.collection('reaudits').updateOne(
+    { _id: record._id },
+    { $set: { mainSource: fetched.source, updatedAt: now() } }
+  );
+  await db.collection('batch_items').updateOne(
+    { _id: item._id },
+    { $set: { source: fetched.source } }
+  );
+  return fetched.source;
+}
+
 async function runReaudit(req, res) {
   try {
     const db = await getDb();
@@ -414,6 +447,9 @@ async function runReaudit(req, res) {
   _id: new (require('mongodb').ObjectId)(record.auditId)
 });
     if (!batch || !item) throw new Error('Parent batch item no longer exists');
+
+    const mainSource = await resolveMainSource({ db, record, item, batch });
+    record.mainSource = mainSource;
 
     const evidence = verifiedEvidence(record);
     const externalSummary = (record.externalContracts || []).map(x => ({
@@ -452,7 +488,7 @@ async function runReaudit(req, res) {
         for (const apiKey of keys) {
           try {
             const audit = await runLLMAudit({
-              source: item.source,
+              source: mainSource,
               systemPrompt: batch.systemPrompt,
               model: cfg.model,
               contractName: item.contractName || 'Unknown',
@@ -474,6 +510,7 @@ async function runReaudit(req, res) {
       const outcome = await runComReaudit({
         item: {
           ...item,
+          source: mainSource,
           reauditOriginalBlackBox: record.originalBlackBoxEscalation
         },
         runAudit,

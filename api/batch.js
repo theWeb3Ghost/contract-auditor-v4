@@ -2722,6 +2722,8 @@ if (batch.mode === 'com' && batch.com?.enabled) {
         implementation: contract.implementation || null,
         isProxy: contract.isProxy || false,
         auditedAddress: contract.auditedAddress || address,
+        // Persist the audited source so Reaudit can reuse it later.
+        source: contract.source,
         updatedAt: now(),
         ...(com.status === 'complete' ? { finishedAt: now() } : {})
       }});
