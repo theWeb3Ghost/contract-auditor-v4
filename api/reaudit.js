@@ -299,15 +299,27 @@ async function addExternalContract(req, res) {
     });
 
     external.addedAt = now();
-    external.includedInLLM = external.sourceStatus === 'verified' && Boolean(external.source);
 
-    await reaudits.updateOne(
-      { _id: record._id, status: 'pending' },
-      {
-        $push: { externalContracts: external },
-        $set: { updatedAt: now() }
-      }
-    );
+    external.includedInLLM =
+    external.sourceStatus === 'verified' && Boolean(external.source);
+
+const hasVerifiedSource =
+  (record.externalContracts || []).some(
+    x => x.sourceStatus === 'verified' && x.source
+  ) || external.includedInLLM;
+
+await reaudits.updateOne(
+  { _id: record._id, status: 'pending' },
+  {
+    $push: { externalContracts: external },
+    $set: {
+      updatedAt: now(),
+      auditStage: hasVerifiedSource
+        ? 'reaudit_ready_to_run'
+        : 'reaudit_pending'
+    }
+  }
+);
 
     const updated = await reaudits.findOne({ _id: record._id });
     return res.json({ ok: true, contract: external, reaudit: updated });
