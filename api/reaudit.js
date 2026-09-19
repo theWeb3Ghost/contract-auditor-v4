@@ -611,7 +611,10 @@ async function applyClaimedReaudit(record) {
   const items = db.collection('batch_items');
   const reaudits = db.collection('reaudits');
 
-  const item = await items.findOne({ _id: require('mongodb').ObjectId(record.auditId), batchId: record.batchId });
+  const item = await items.findOne({
+  _id: new (require('mongodb').ObjectId)(record.auditId),
+  batchId: record.batchId
+});
   if (!item) {
     await reaudits.updateOne({ _id: record._id }, { $set: { status: 'applied', appliedAt: now(), updatedAt: now(), error: 'Original batch item no longer exists' } });
     return { applied: false, missing: true };
