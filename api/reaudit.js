@@ -523,10 +523,16 @@ async function runReaudit(req, res) {
   } catch (error) {
     try {
       const db = await getDb();
-      await db.collection('reaudits').updateOne(
-        { _id: require('mongodb').ObjectId(req.params.id) },
-        { $set: { status: 'pending', error: errorText(error), updatedAt: now() } }
-      );
+await db.collection('reaudits').updateOne(
+  { _id: new (require('mongodb').ObjectId)(req.params.id) },
+  {
+    $set: {
+      status: 'pending',
+      updatedAt: now(),
+      error: errorText(error)
+    }
+  }
+);
     } catch (_) {}
     return res.status(500).json({ ok: false, error: errorText(error) });
   }
