@@ -541,6 +541,49 @@ button:disabled {
   margin-bottom: 0;
 }
 
+/* Collapsible rows + filter tabs */
+.reaudit-card.collapsed { padding: 10px 14px; margin-bottom: 8px; }
+.reaudit-card .reaudit-head { cursor: pointer; align-items: center; user-select: none; }
+.reaudit-card .reaudit-head:hover .reaudit-title { color: var(--accent); }
+.reaudit-head-main { display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1; }
+.reaudit-chevron { flex: none; color: var(--text-dim); font-size: .8rem; transition: transform .15s; }
+.reaudit-card:not(.collapsed) .reaudit-chevron { transform: rotate(90deg); }
+.reaudit-head-right { display: flex; gap: 8px; align-items: center; flex: none; }
+.reaudit-chip { color: var(--text-dim); font-size: .72rem; white-space: nowrap; }
+.reaudit-body { margin-top: 12px; }
+.reaudit-card.collapsed .reaudit-body { display: none; }
+
+/* Persistent toolbar (tabs + search + clear) */
+.reaudit-toolbar { margin-bottom: 12px; }
+.reaudit-toolbar-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.reaudit-search { flex: 1; min-width: 180px; }
+.reaudit-more { display: block; width: 100%; margin-top: 8px; }
+.reaudit-count-note { color: var(--text-dim); font-size: .72rem; margin-top: 8px; text-align: center; }
+
+/* Press-and-hold buttons: a fill sweeps across while you hold */
+.hold-btn { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.hold-btn::after {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: rgba(255, 90, 90, .45);
+  pointer-events: none;
+}
+.hold-btn.holding::after { width: 100%; transition: width var(--hold-ms, 1000ms) linear; }
+.hold-btn:disabled { opacity: .45; cursor: not-allowed; }
+.reaudit-clear-one { padding: 3px 9px; font-size: .72rem; }
+
+.reaudit-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.reaudit-tab {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.reaudit-tab.active { color: var(--accent); border-color: var(--accent); }
+
 .reaudit-head {
   display: flex;
   justify-content: space-between;
@@ -2566,6 +2609,152 @@ function stopReauditPolling() {
 }
 
 let lastReauditSignature = null;
+let lastReauditRecords = [];
+let reauditFilter = 'action';            // action | progress | done | all
+const reauditExpanded = new Set();       // record ids currently expanded
+
+const REAUDIT_GROUPS = {
+  action:   r => (r.status || 'pending') === 'pending',
+  progress: r => ['running', 'ready', 'applying'].includes(r.status),
+  done:     r => r.status === 'applied',
+  all:      () => true
+};
+
+const REAUDIT_PAGE = 15;
+let reauditVisibleLimit = REAUDIT_PAGE;
+let reauditSearch = '';
+let reauditToolbar = null;
+const reauditTabButtons = {};
+let reauditClearDoneBtn = null;
+let reauditClearIds = [];
+
+function matchesReauditSearch(r) {
+  if (!reauditSearch) return true;
+  const q = reauditSearch;
+  const haystack = [
+    r.mainAddress,
+    r.batchId,
+    ...(Array.isArray(r.externalContracts) ? r.externalContracts.map(c => c.address) : [])
+  ].join(' ').toLowerCase();
+  return haystack.includes(q);
+}
+
+// Press-and-hold guard: the action only fires after `ms` of continuous holding.
+function attachLongPress(el, ms, onTrigger) {
+  let timer = null;
+  el.style.setProperty('--hold-ms', ms + 'ms');
+  const cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    el.classList.remove('holding');
+  };
+  el.addEventListener('pointerdown', e => {
+    if (el.disabled) return;
+    e.stopPropagation();
+    el.classList.add('holding');
+    timer = setTimeout(() => {
+      timer = null;
+      el.classList.remove('holding');
+      onTrigger();
+    }, ms);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => el.addEventListener(t, cancel));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!el.disabled) reauditMessage.textContent = 'Press and hold the button to clear.';
+  });
+}
+
+async function clearReauditRecords(ids) {
+  if (!ids.length) return;
+  try {
+    const response = await fetch(`${apiBase()}/api/reaudit/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not clear Reaudit records');
+
+    ids.forEach(id => reauditExpanded.delete(String(id)));
+    await refreshReauditQueue();
+    reauditMessage.textContent = `Cleared ${data.deleted} finished Reaudit record(s).`;
+  } catch (error) {
+    reauditMessage.textContent = error.message || String(error);
+  }
+}
+
+function ensureReauditToolbar() {
+  if (reauditToolbar && reauditToolbar.isConnected) return;
+
+  reauditToolbar = document.createElement('div');
+  reauditToolbar.className = 'reaudit-toolbar';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'reaudit-tabs';
+  [['action', 'Needs action'], ['progress', 'In progress'], ['done', 'Done'], ['all', 'All']]
+    .forEach(([key, label]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'reaudit-tab';
+      btn.dataset.label = label;
+      btn.onclick = () => {
+        reauditFilter = key;
+        reauditVisibleLimit = REAUDIT_PAGE;
+        rerenderReauditFromCache();
+      };
+      reauditTabButtons[key] = btn;
+      tabs.appendChild(btn);
+    });
+
+  const row = document.createElement('div');
+  row.className = 'reaudit-toolbar-row';
+
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'reaudit-search';
+  search.placeholder = 'Search address or batch ID…';
+  let searchTimer = null;
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      reauditSearch = search.value.trim().toLowerCase();
+      reauditVisibleLimit = REAUDIT_PAGE;
+      rerenderReauditFromCache();
+    }, 150);
+  });
+
+  reauditClearDoneBtn = document.createElement('button');
+  reauditClearDoneBtn.type = 'button';
+  reauditClearDoneBtn.className = 'danger hold-btn';
+  reauditClearDoneBtn.title = 'Press and hold to clear finished (applied) Reaudit records';
+  attachLongPress(reauditClearDoneBtn, 1200, () => clearReauditRecords(reauditClearIds.slice()));
+
+  row.appendChild(search);
+  row.appendChild(reauditClearDoneBtn);
+  reauditToolbar.appendChild(tabs);
+  reauditToolbar.appendChild(row);
+  reauditList.parentNode.insertBefore(reauditToolbar, reauditList);
+}
+
+function updateReauditToolbar(searched) {
+  ensureReauditToolbar();
+  for (const [key, btn] of Object.entries(reauditTabButtons)) {
+    btn.textContent = `${btn.dataset.label} (${searched.filter(REAUDIT_GROUPS[key]).length})`;
+    btn.classList.toggle('active', reauditFilter === key);
+  }
+  reauditClearIds = searched.filter(REAUDIT_GROUPS.done).map(r => String(r._id));
+  reauditClearDoneBtn.disabled = !reauditClearIds.length;
+  reauditClearDoneBtn.textContent = reauditSearch
+    ? `🗑 Hold to clear ${reauditClearIds.length} matching done`
+    : `🗑 Hold to clear ${reauditClearIds.length} done`;
+}
+
+function rerenderReauditFromCache() {
+  lastReauditSignature = null;
+  renderReauditQueue(lastReauditRecords);
+}
 
 function reauditSignature(records) {
   // Ignore huge source blobs; only real state changes should trigger a redraw.
@@ -2576,8 +2765,12 @@ function reauditSignature(records) {
   );
 }
 
-function renderReauditQueue(records) {
-  if (!records.length) {
+function renderReauditQueue(allRecords) {
+  lastReauditRecords = allRecords;
+  const searched = reauditSearch ? allRecords.filter(matchesReauditSearch) : allRecords;
+  const matches = searched.filter(REAUDIT_GROUPS[reauditFilter] || REAUDIT_GROUPS.all);
+  const records = matches.slice(0, reauditVisibleLimit);
+  if (!allRecords.length) {
     lastReauditSignature = null;
     reauditPanel.classList.add('hidden');
     reauditList.innerHTML = '';
@@ -2586,7 +2779,8 @@ function renderReauditQueue(records) {
 
   // Polling fires every 5s. If nothing changed, do NOT rebuild the DOM,
   // otherwise the page jumps to the top and inner scroll boxes reset.
-  const signature = reauditSignature(records);
+  const signature = [reauditFilter, reauditSearch, reauditVisibleLimit, [...reauditExpanded].join(',')].join('|')
+    + '|' + reauditSignature(allRecords);
   if (signature === lastReauditSignature && reauditList.children.length) {
     return;
   }
@@ -2622,6 +2816,15 @@ reauditList.querySelectorAll('details[data-reaudit-id]').forEach(details => {
 
 reauditList.innerHTML = '';
 
+  updateReauditToolbar(searched);
+
+  if (!records.length) {
+    const empty = document.createElement('div');
+    empty.className = 'reaudit-empty';
+    empty.textContent = reauditSearch ? 'No records match your search.' : 'Nothing in this view.';
+    reauditList.appendChild(empty);
+  }
+
   for (const record of records) {
     const card = document.createElement('div');
     card.className = 'reaudit-card';
@@ -2633,15 +2836,26 @@ reauditList.innerHTML = '';
       ? `AUDITOR A\n\n${record.originalCom?.llmA?.final?.result || record.originalCom?.llmA?.initial?.result || '[missing]'}\n\n==============================\n\nAUDITOR B\n\n${record.originalCom?.llmB?.final?.result || record.originalCom?.llmB?.initial?.result || '[missing]'}`
       : (record.originalResult || '[missing]');
 
+    const extList = Array.isArray(record.externalContracts) ? record.externalContracts : [];
+    const verifiedCount = extList.filter(x => x.sourceStatus === 'verified' && x.source).length;
+    const isOpen = reauditExpanded.has(String(record._id));
+    card.classList.toggle('collapsed', !isOpen);
+
     card.innerHTML = `
       <div class="reaudit-head">
-        <div>
-          <div class="reaudit-title">${escapeHtml(record.mainAddress)}</div>
-          <div class="reaudit-meta">
-            Batch: ${escapeHtml(record.batchId)} · #${Number(record.originalIndex || 0) + 1} · ${escapeHtml(record.chainId || '')} · ${modeLabel}
+        <div class="reaudit-head-main">
+          <span class="reaudit-chevron">▶</span>
+          <div style="min-width:0">
+            <div class="reaudit-title">${escapeHtml(record.mainAddress)}</div>
+            <div class="reaudit-meta">
+              Batch: ${escapeHtml(record.batchId)} · #${Number(record.originalIndex || 0) + 1} · ${escapeHtml(record.chainId || '')} · ${modeLabel}
+            </div>
           </div>
         </div>
-        <span class="status-badge status-${escapeHtml(status)}">${escapeHtml(status)}</span>
+        <div class="reaudit-head-right">
+          <span class="reaudit-chip">${verifiedCount}/${extList.length} verified</span>
+          <span class="status-badge status-${escapeHtml(status)}">${escapeHtml(status)}</span>
+        </div>
       </div>
 
       <div class="reaudit-section">
@@ -2662,6 +2876,30 @@ reauditList.innerHTML = '';
         <div class="reaudit-contracts"></div>
       </div>
     `;
+
+    if (status === 'applied') {
+      const clearOne = document.createElement('button');
+      clearOne.type = 'button';
+      clearOne.className = 'danger hold-btn reaudit-clear-one';
+      clearOne.textContent = '🗑 hold';
+      clearOne.title = 'Press and hold to clear this finished record';
+      attachLongPress(clearOne, 800, () => clearReauditRecords([String(record._id)]));
+      card.querySelector('.reaudit-head-right').appendChild(clearOne);
+    }
+
+    // Wrap everything after the header into a collapsible body
+    const headEl = card.querySelector('.reaudit-head');
+    const body = document.createElement('div');
+    body.className = 'reaudit-body';
+    while (headEl.nextElementSibling) body.appendChild(headEl.nextElementSibling);
+    card.appendChild(body);
+
+    headEl.onclick = () => {
+      const id = String(record._id);
+      if (reauditExpanded.has(id)) reauditExpanded.delete(id);
+      else reauditExpanded.add(id);
+      rerenderReauditFromCache();
+    };
 
     const contractsEl = card.querySelector('.reaudit-contracts');
     const contracts = Array.isArray(record.externalContracts) ? record.externalContracts : [];
@@ -2731,7 +2969,7 @@ actions.innerHTML = `
   </button>
   <button type="button" class="danger reaudit-skip-button">SKIP</button>
 `;
-      card.appendChild(actions);
+      body.appendChild(actions);
 
       const runButton = actions.querySelector('.reaudit-run-button');
       const skipButton = actions.querySelector('.reaudit-skip-button');
@@ -2752,7 +2990,7 @@ if (hasVerifiedSource) {
     'Waiting for at least one verified external contract source.';
 }
 
-card.appendChild(stageNote);
+body.appendChild(stageNote);
     }
 
     if (status === 'ready') {
@@ -2762,7 +3000,7 @@ card.appendChild(stageNote);
       note.textContent = record.skipped
         ? 'Skipped — waiting for the batch worker to apply this result.'
         : 'Reaudit complete — waiting for the batch worker priority slot.';
-      card.appendChild(note);
+      body.appendChild(note);
     }
 
     if (status === 'applying') {
@@ -2770,7 +3008,7 @@ card.appendChild(stageNote);
       note.className = 'reaudit-status';
       note.style.marginTop = '10px';
       note.textContent = 'Applying final Reaudit result to the batch item...';
-      card.appendChild(note);
+      body.appendChild(note);
     }
 
     if (status === 'applied') {
@@ -2778,7 +3016,7 @@ card.appendChild(stageNote);
       note.className = 'reaudit-status';
       note.style.marginTop = '10px';
       note.textContent = record.skipped ? 'Reaudit skipped and closed.' : 'Reaudit applied to the final audit result.';
-      card.appendChild(note);
+      body.appendChild(note);
     }
 
     if (record.error) {
@@ -2786,10 +3024,26 @@ card.appendChild(stageNote);
       error.className = 'error-box';
       error.style.marginTop = '10px';
       error.textContent = record.error;
-      card.appendChild(error);
+      body.appendChild(error);
     }
 
     reauditList.appendChild(card);
+  }
+
+  if (matches.length > records.length) {
+    const remaining = matches.length - records.length;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'secondary reaudit-more';
+    more.textContent = `Show ${Math.min(REAUDIT_PAGE, remaining)} more (${remaining} remaining)`;
+    more.onclick = () => { reauditVisibleLimit += REAUDIT_PAGE; rerenderReauditFromCache(); };
+    reauditList.appendChild(more);
+  }
+  if (matches.length) {
+    const note = document.createElement('div');
+    note.className = 'reaudit-count-note';
+    note.textContent = `Showing ${records.length} of ${matches.length}`;
+    reauditList.appendChild(note);
   }
 
   // ---- Restore UI state after the rebuild ----
@@ -3313,7 +3567,7 @@ clearBtn.onclick =
     const confirmed =
       confirm(
         'CLEAR THIS BATCH?\n\n' +
-        'This permanently deletes the batch, its addresses, and its saved audit results.\n\n' +
+        'This permanently deletes the batch, its addresses, its saved audit results, and its Reaudit queue entries.\n\n' +
         'This cannot be undone.'
       );
 
@@ -3386,6 +3640,11 @@ clearBtn.onclick =
 
       batchIdEl.textContent =
         '—';
+
+
+      // The server also deleted this batch's Reaudit records; refresh the
+      // queue right now so the cleared cards disappear immediately.
+      await refreshReauditQueue();
 
 
       alert(
