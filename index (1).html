@@ -1,0 +1,4560 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Contract Auditor</title>
+
+<style>
+
+:root {
+  --bg: #14171c;
+  --panel: #1b1f26;
+  --border: #2a2f38;
+  --text: #dfe3e8;
+  --text-dim: #8b93a1;
+  --accent: #d8a12e;
+  --accent-dim: #a67f28;
+  --ok: #4caf7d;
+  --err: #e0645b;
+  --warn: #e0a85b;
+  --mono: monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  padding: 16px;
+}
+
+.wrap {
+  max-width: 800px;
+  margin: auto;
+}
+
+header {
+  margin-bottom: 20px;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin-bottom: 5px;
+}
+
+header p {
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+label {
+  display: block;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  background: #101317;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: 7px;
+  margin-bottom: 14px;
+  font-family: var(--mono);
+}
+
+textarea {
+  min-height: 120px;
+}
+
+button {
+  border: none;
+  border-radius: 8px;
+  padding: 11px 14px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.primary {
+  background: var(--accent);
+  color: #16130a;
+  width: 100%;
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+}
+
+.danger {
+  background: #4a2525;
+  color: #ffb0a8;
+}
+
+button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.mode-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.mode-row button {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.mode-row button.active {
+  background: var(--accent);
+  color: #16130a;
+}
+
+.progress-bar {
+  height: 12px;
+  background: #101317;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width .3s;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.stat {
+  background: #101317;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.stat-value {
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+.stat-label {
+  color: var(--text-dim);
+  font-size: .75rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status-running {
+  background: #253c2d;
+  color: var(--ok);
+}
+
+.status-completed {
+  background: #253c2d;
+  color: var(--ok);
+}
+
+.status-failed,
+.status-paused_rate_limit {
+  background: #482727;
+  color: var(--err);
+}
+
+.status-paused {
+  background: #44391f;
+  color: var(--warn);
+}
+
+.status-pending,
+.status-queued {
+  background: #29313a;
+  color: var(--text-dim);
+}
+
+.items {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.item {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.address {
+  font-family: var(--mono);
+  font-size: .78rem;
+  word-break: break-all;
+}
+
+.item-meta {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: .75rem;
+}
+
+.download-report {
+  margin-top: 8px;
+  padding: 7px 10px;
+  font-size: .75rem;
+  background: transparent;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: .78rem;
+  margin-top: -8px;
+  margin-bottom: 12px;
+}
+
+.error-box {
+  background: #3d2424;
+  color: #ffaaa2;
+  padding: 10px;
+  border-radius: 7px;
+  font-size: .8rem;
+  word-break: break-word;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.actions button {
+  flex: 1;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.rate-status-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 10px 14px;
+
+  border: none;
+  border-radius: 999px;
+
+  cursor: pointer;
+
+  font-weight: 600;
+
+  box-shadow:
+    0 8px 30px rgba(0,0,0,.2);
+}
+
+#rateStatusDot {
+  width: 9px;
+  height: 9px;
+
+  border-radius: 50%;
+
+  background: #22c55e;
+}
+@media (max-width: 600px) {
+  .wrap {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+
+  .rate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rate-drawer {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  input,
+  textarea,
+  select {
+    max-width: 100%;
+  }
+}
+
+.rate-drawer {
+  position: fixed;
+
+  top: 0;
+  right: -420px;
+
+  width: min(420px, 92vw);
+  height: 100vh;
+
+  z-index: 2000;
+
+  background: #111827;
+
+  border-left:
+    1px solid rgba(255,255,255,.1);
+
+  transition:
+    right .25s ease;
+
+  overflow-y: auto;
+
+  box-shadow:
+    -20px 0 50px rgba(0,0,0,.35);
+}
+
+.rate-drawer.open {
+  right: 0;
+}
+
+.rate-drawer-header {
+  position: sticky;
+  top: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 20px;
+
+  background: #111827;
+
+  border-bottom:
+    1px solid rgba(255,255,255,.1);
+}
+
+.rate-drawer-header h3 {
+  margin: 0;
+}
+
+.rate-close-button {
+  border: none;
+  background: transparent;
+
+  color: inherit;
+
+  font-size: 22px;
+
+  cursor: pointer;
+}
+
+.rate-dashboard-content {
+  padding: 16px;
+}
+
+.rate-global-card,
+.rate-key-card {
+  padding: 16px;
+
+  margin-bottom: 14px;
+
+  border-radius: 12px;
+
+  background:
+    rgba(255,255,255,.05);
+
+  border:
+    1px solid rgba(255,255,255,.08);
+}
+
+.rate-key-header {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  margin-bottom: 12px;
+}
+
+.rate-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 10px;
+}
+
+.rate-metric {
+  padding: 10px;
+
+  border-radius: 8px;
+
+  background:
+    rgba(255,255,255,.04);
+}
+
+.rate-metric-label {
+  font-size: 11px;
+
+  opacity: .65;
+}
+
+.rate-metric-value {
+  font-size: 16px;
+
+  font-weight: 700;
+
+  margin-top: 4px;
+}
+
+.rate-progress {
+  height: 8px;
+
+  border-radius: 999px;
+
+  overflow: hidden;
+
+  background:
+    rgba(255,255,255,.1);
+
+  margin-top: 10px;
+}
+
+.rate-progress-bar {
+  height: 100%;
+
+  background: #22c55e;
+
+  transition:
+    width .3s ease;
+}
+
+.rate-status-pill {
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  font-size: 11px;
+
+  font-weight: 700;
+}
+
+.status-available,
+.status-active {
+  background:
+    rgba(34,197,94,.15);
+
+  color:
+    #22c55e;
+}
+
+.status-cooldown {
+  background:
+    rgba(234,179,8,.15);
+
+  color:
+    #eab308;
+}
+
+.status-disabled {
+  background:
+    rgba(239,68,68,.15);
+
+  color:
+    #ef4444;
+} 
+
+
+
+/* ============================================================
+   REAUDIT DASHBOARD
+   ============================================================ */
+
+.reaudit-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: #15191f;
+}
+
+.reaudit-card:last-child {
+  margin-bottom: 0;
+}
+
+/* Collapsible rows + filter tabs */
+.reaudit-card.collapsed { padding: 10px 14px; margin-bottom: 8px; }
+.reaudit-card .reaudit-head { cursor: pointer; align-items: center; user-select: none; }
+.reaudit-card .reaudit-head:hover .reaudit-title { color: var(--accent); }
+.reaudit-head-main { display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1; }
+.reaudit-chevron { flex: none; color: var(--text-dim); font-size: .8rem; transition: transform .15s; }
+.reaudit-card:not(.collapsed) .reaudit-chevron { transform: rotate(90deg); }
+.reaudit-head-right { display: flex; gap: 8px; align-items: center; flex: none; }
+.reaudit-chip { color: var(--text-dim); font-size: .72rem; white-space: nowrap; }
+.reaudit-body { margin-top: 12px; }
+.reaudit-card.collapsed .reaudit-body { display: none; }
+
+/* Persistent toolbar (tabs + search + clear) */
+.reaudit-toolbar { margin-bottom: 12px; }
+.reaudit-toolbar-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.reaudit-search { flex: 1; min-width: 180px; }
+.reaudit-more { display: block; width: 100%; margin-top: 8px; }
+.reaudit-count-note { color: var(--text-dim); font-size: .72rem; margin-top: 8px; text-align: center; }
+
+/* Press-and-hold buttons: a fill sweeps across while you hold */
+.hold-btn { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.hold-btn::after {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: rgba(255, 90, 90, .45);
+  pointer-events: none;
+}
+.hold-btn.holding::after { width: 100%; transition: width var(--hold-ms, 1000ms) linear; }
+.hold-btn:disabled { opacity: .45; cursor: not-allowed; }
+.reaudit-clear-one { padding: 3px 9px; font-size: .72rem; }
+
+.reaudit-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.reaudit-tab {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.reaudit-tab.active { color: var(--accent); border-color: var(--accent); }
+
+.reaudit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.reaudit-title {
+  font-weight: bold;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.reaudit-meta {
+  color: var(--text-dim);
+  font-size: .78rem;
+  margin-top: 5px;
+}
+
+.reaudit-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.reaudit-section-title {
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: bold;
+  margin-bottom: 7px;
+}
+
+.reaudit-result {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #0e1115;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.reaudit-contract {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+  margin-bottom: 7px;
+}
+
+.reaudit-contract-address {
+  font-family: var(--mono);
+  font-size: .74rem;
+  word-break: break-all;
+  flex: 1;
+  min-width: 180px;
+}
+
+.reaudit-status {
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+
+.reaudit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.reaudit-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.reaudit-add-row input {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.reaudit-empty {
+  color: var(--text-dim);
+  font-size: .85rem;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="wrap">
+
+<header>
+
+<h1>Contract Auditor</h1>
+
+<p>
+Persistent smart contract auditing with batch processing,
+automatic checkpoints and restart recovery.
+</p>
+<button
+  id="rateStatusButton"
+  class="rate-status-button"
+>
+  <span id="rateStatusDot"></span>
+  🧠 LLM Rate
+</button>
+
+</header>
+
+
+<!-- SETTINGS -->
+
+<div class="panel">
+
+<h2>Backend & API Settings</h2>
+
+<label>Backend URL</label>
+
+<input
+  id="baseUrl"
+  placeholder="Leave blank when hosted on same Render server"
+/>
+
+<label>LLM Endpoint</label>
+
+<input
+  id="llmUrl"
+  placeholder="https://aihubmix.com/v1/chat/completions"
+/>
+
+<label>LLM API Keys</label>
+
+<input
+  id="openaiKey"
+  type="password"
+  placeholder="apikey1, apikey2, apikey3"
+/>
+
+<p class="hint">
+  Enter multiple LLM API Keys separated by commas"
+</p>
+
+<label>Etherscan API Key</label>
+
+<input
+  id="etherscanKey"
+  type="password"
+  placeholder="Explorer API key"
+/>
+
+<p class="hint">
+Your keys are stored in this browser for convenience.
+The batch backend uses them only for processing your submitted batch.
+</p>
+
+</div>
+
+
+<!-- TARGET -->
+
+<div class="panel">
+
+<h2>Target</h2>
+
+<label>Chain</label>
+
+<select id="chain">
+
+<option value="1">Ethereum</option>
+<option value="56">BNB Smart Chain</option>
+<option value="137">Polygon</option>
+<option value="42161">Arbitrum</option>
+<option value="10">Optimism</option>
+<option value="8453">Base</option>
+
+</select>
+
+
+<div class="mode-row">
+
+<button
+  id="singleMode"
+  class="active"
+>
+Single
+</button>
+
+<button
+  id="batchMode"
+>
+Batch
+</button>
+
+</div>
+
+
+<div id="singlePane">
+
+<label>Contract Address</label>
+
+<input
+  id="singleAddress"
+  placeholder="0x..."
+/>
+
+</div>
+
+
+<div
+  id="batchPane"
+  class="hidden"
+>
+
+<label>
+Paste addresses / JSON / JSONL
+</label>
+
+<textarea
+  id="batchInput"
+  placeholder='0x123...
+
+0x456...
+
+or JSON:
+
+["0x123...", "0x456..."]
+
+or JSONL:
+
+{"address":"0x123..."}
+{"address":"0x456..."}'
+></textarea>
+
+
+<label>
+Or upload a file
+</label>
+
+<input
+  type="file"
+  id="fileInput"
+  accept=".txt,.csv,.json,.jsonl"
+/>
+
+<p class="hint">
+
+Supported:
+TXT, CSV, JSON and JSONL.
+
+Duplicates are automatically removed.
+
+</p>
+
+</div>
+
+</div>
+
+
+<!-- AUDIT SETTINGS -->
+
+<div class="panel">
+
+<h2>Audit Settings</h2>
+
+<label>Model</label>
+
+<input
+  id="model"
+  value="gpt-4o-mini"
+/>
+
+
+<label>System Prompt</label>
+
+<textarea id="systemPrompt"></textarea>
+
+<label>Audit Mode</label>
+<select id="auditMode">
+  <option value="normal">Normal — existing single LLM</option>
+  <option value="com">COM — dual auditor cross-review</option>
+</select>
+
+<div id="comSettings" style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:10px">
+  <h3>🤝 COM Dual-Auditor Settings</h3>
+  <p class="hint">Phase 1 runs both auditors together. After both finish, Phase 2 runs both cross-reviews together. Each result is checkpointed immediately.</p>
+  <label>LLM A Endpoint</label><input id="comLlmAUrl" placeholder="https://.../chat/completions" />
+  <label>LLM A Model</label><input id="comLlmAModel" placeholder="model name" />
+  <label>LLM A API Keys (comma separated)</label><input id="comLlmAKeys" type="password" placeholder="key1,key2" />
+  <label>LLM B Endpoint</label><input id="comLlmBUrl" placeholder="https://.../chat/completions" />
+  <label>LLM B Model</label><input id="comLlmBModel" placeholder="model name" />
+  <label>LLM B API Keys (comma separated)</label><input id="comLlmBKeys" type="password" placeholder="key1,key2" />
+</div>
+
+</div>
+
+
+<button
+  id="startBtn"
+  class="primary"
+>
+Start Audit
+</button>
+
+<!-- CONTRACT NAME SKIP LIST -->
+
+<div class="panel">
+
+  <h2>
+    🚫 Contract Name Skip List
+  </h2>
+
+  <p class="hint">
+    Add contract names you do not want sent to the LLM.
+    Future verified contracts with an exact matching name
+    will be skipped automatically.
+  </p>
+
+  <div
+    style="
+      display:flex;
+      gap:8px;
+      margin-bottom:12px;
+    "
+  >
+
+    <input
+      id="skipContractNameInput"
+      type="text"
+      placeholder="e.g. GnosisSafe"
+      style="
+        margin-bottom:0;
+        flex:1;
+      "
+    />
+
+    <button
+      id="addSkipContractNameButton"
+      type="button"
+      class="secondary"
+      style="
+        white-space:nowrap;
+      "
+    >
+      + Add
+    </button>
+
+  </div>
+
+
+  <div
+    id="skipListMessage"
+    style="
+      min-height:18px;
+      font-size:.8rem;
+      margin-bottom:10px;
+    "
+  ></div>
+
+
+  <div
+    id="skipListCount"
+    class="hint"
+    style="
+      margin-top:0;
+    "
+  >
+    Loading skip list...
+  </div>
+
+
+  <div
+    id="skipListContent"
+    style="
+      max-height:300px;
+      overflow-y:auto;
+    "
+  >
+    Loading...
+  </div>
+
+</div>
+
+
+  
+<!-- BATCH DASHBOARD -->
+
+<div
+  id="dashboard"
+  class="panel hidden"
+  style="margin-top:16px"
+>
+
+<h2>Batch Progress</h2>
+
+<div>
+
+Batch ID:
+
+<span
+  id="batchId"
+  style="font-family:monospace"
+></span>
+
+</div>
+
+
+<div
+  id="batchStatus"
+  style="margin-top:10px"
+></div>
+
+
+<div class="progress-bar">
+
+<div
+  id="progressFill"
+  class="progress-fill"
+></div>
+
+</div>
+
+
+<div
+  id="progressText"
+  style="text-align:center;color:var(--text-dim)"
+></div>
+
+
+<div class="stats">
+
+<div class="stat">
+
+<div
+  id="completedCount"
+  class="stat-value"
+>
+0
+</div>
+
+<div class="stat-label">
+Completed
+</div>
+
+</div>
+
+
+<div class="stat">
+
+<div
+  id="failedCount"
+  class="stat-value"
+>
+0
+</div>
+
+<div class="stat-label">
+Failed / Skipped
+</div>
+
+</div>
+
+
+<div class="stat">
+
+<div
+  id="remainingCount"
+  class="stat-value"
+>
+0
+</div>
+
+<div class="stat-label">
+Remaining
+</div>
+
+</div>
+
+
+<div class="stat">
+
+<div
+  id="totalCount"
+  class="stat-value"
+>
+0
+</div>
+
+<div class="stat-label">
+Total
+</div>
+
+</div>
+
+</div>
+
+
+<div
+  id="batchError"
+  class="hidden"
+  style="margin-top:12px"
+></div>
+
+
+<div class="actions">
+
+<button
+  id="updateBatchConfigBtn"
+  class="secondary"
+  type="button"
+>
+  Apply Model / Prompt
+</button>
+
+<button
+  id="pauseBtn"
+  class="secondary"
+>
+  Pause
+</button>
+
+<button
+  id="resumeBtn"
+  class="secondary"
+>
+Resume
+</button>
+
+<button
+  id="restartBtn"
+  class="secondary"
+  type="button"
+>
+  ↻ Restart From Beginning
+</button>
+
+<button
+  id="clearBtn"
+  class="danger"
+  type="button"
+>
+  🗑 Clear Batch
+</button>
+
+
+</div>
+
+</div>
+
+
+<!-- REAUDIT DASHBOARD -->
+
+<div
+  id="reauditPanel"
+  class="panel hidden"
+  style="margin-top:16px"
+>
+  <h2>🟪 Reaudit Queue</h2>
+
+  <p class="hint">
+    Contracts whose first audit reached the unresolved black-box UNRATED verdict appear here.
+    Add one or more external contract addresses manually. Verified source is fetched automatically.
+    Unverified external contracts are recorded but are not sent to the LLM. Each contract gets one Reaudit only.
+  </p>
+
+  <div id="reauditMessage" style="min-height:18px;font-size:.8rem;margin-bottom:10px"></div>
+  <div id="reauditList"></div>
+</div>
+
+
+<!-- RESULTS -->
+
+<div
+  id="resultsPanel"
+  class="panel hidden"
+>
+
+<h2>Contracts</h2>
+
+<div
+  id="items"
+  class="items"
+></div>
+
+<div
+  id="pager"
+  class="pager"
+></div>
+
+</div>
+
+</div>
+
+
+  <div
+<!-- LLM RATE INTELLIGENCE DRAWER -->
+<div
+  id="rateDrawer"
+  class="rate-drawer"
+>
+  <div class="rate-drawer-header">
+    <div>
+      <h3>🧠 LLM Intelligence</h3>
+      <small id="rateGlobalStatus">
+        Loading...
+      </small>
+    </div>
+
+    <button
+      id="closeRateDrawer"
+      class="rate-close-button"
+      type="button"
+    >
+      ✕
+    </button>
+  </div>
+
+  <div
+    style="
+      padding:16px;
+    "
+  >
+
+    <div
+      style="
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+        margin-bottom:14px;
+      "
+    >
+
+      <button
+        id="softRateResetButton"
+        type="button"
+        class="secondary"
+      >
+        Soft Reset
+      </button>
+
+      <button
+        id="learningRateResetButton"
+        type="button"
+        class="secondary"
+      >
+        Reset Learning
+      </button>
+
+      <button
+        id="hardRateResetButton"
+        type="button"
+        class="danger"
+      >
+        Hard Reset
+      </button>
+
+      <button
+        id="cleanupRateProfilesButton"
+        type="button"
+        class="secondary"
+      >
+        Clean Stale Profiles
+      </button>
+
+    </div>
+
+    <div
+      id="rateResetMessage"
+      style="
+        font-size:.8rem;
+        margin-bottom:12px;
+        min-height:18px;
+      "
+    ></div>
+
+    <div
+      id="rateDashboardContent"
+      class="rate-dashboard-content"
+    >
+      Loading rate intelligence...
+    </div>
+
+  </div>
+</div>
+
+<script>
+
+
+// ============================================================
+// DEFAULT PROMPT
+// ============================================================
+
+const DEFAULT_PROMPT = "# \ud83e\udd85 Smart Contract Security Audit Prompt (v5.1 \u2014 Adversarial Cross-Check Edition, Black-Box Manipulability Patch)\n\n## \u2699\ufe0f SYSTEM DIRECTIVE \u2014 ROLE ACTIVATION\n\nYou are **ZeroFox**, an elite smart contract security auditor. Your objective is to find exploitable paths that an **external attacker with zero privileges** could execute to drain, steal,or permanently destroy value (ETH or tokens) held or tracked by the contract.\n\n**Prime directive:**Be objective. If the contract is secure, declare it secure \u2014 `CLEAN` is a valid, preferred outcome. Do not invent vulnerabilities, force logic chains, or hallucinate math to fulfill an \"attacker\" persona.\n\nYou never assume admin keys,governance roles, whitelisting, or off-chain cooperation. All proposed exploits must be executable by a single anonymous EOA or a contract it deploys, using only public knowledge (bytecode, ABI, public state, mempool).\n\n**Core principle guiding this entire pipeline:** the deepest, highest-value bugs are rarely visible from reading one function top-to-bottom. They live in the gap between what one piece of state is *written to mean* in one function and what another function *assumes it means* when it later spends or trusts it. A holistic \"read and reason\" pass finds shallow, local bugs reliably and deep,cross-function bugs unreliably. This pipeline exists to make the deep search exhaustive and mechanical instead of hoping a reasoning trace wanders there. Follow the stages in order \u2014 do not skip to checklist-matching before completing the variable trace.\n\n**Honesty about limits:** This pipeline is text based static reasoning. It does not execute code, fuzz inputs, or simulate transactions, and it cannot verify anything that requires runtime state. It cannot see vulnerabilities living in external contracts whose source was not provided. Every output must make these limits visible rather than implying total coverage \u2014 see Stage 8.\n\n---\n\n## \ud83e\udded ANALYSIS PIPELINE\n\n### STAGE 0 \u2014 Recon,Version Anchor & Storage Variable Inventory\n\n- **Version Anchor:** State the exact `pragma` version at the top of your analysis. If it is `<0.8.0`, you MUST treat all math as unchecked by default. If it is `>=0.8.0`, only treat math as unchecked if inside `unchecked` blocks. Do not hallucinate safety rules from other versions.\n- Solidity version, compiler directives, inheritance chain.\n- All external/public functions, their modifiers, and declared visibility/mutability.\n- Every external call site (`call`, `delegatecall`, `staticcall`, low-level transfers, standard hooks).\n- State explicitly: \"Attacker has no role, no whitelisting, no governance votes. Standard, secure deployment practices are assumed.\"\n\n**Standard Interface Conformance:** For any function that matches a standard ERC or well-known interface (e.g., `transfer`, `safeTransferFrom`, `balanceOf`, `deposit`), explicitly state its standard expected behavior. If the implementation deviates from this standard (e.g., a `transfer` function that mints new tokens instead of moving them, or a `view` function that writes state), flag this immediately as a candidate `[INVARIANT_BREAK]`.\n\n**Enumerate every unit of persistent state individually** \u2014 not just top-level variable names, but every struct field and every distinct semantic use of a mapping's value type. If a struct has three fields, list all three separately; each can have an independent bug.\n\n**Verify declared mutability against actual behavior for every function**, especially on pre-0.5.0 code where `view`/`constant`/`pure` are not strictly compiler-enforced. A function that calls anything which writes state is state-changing regardless of its declared modifier. Do not take the modifier's word for it \u2014 trace what the function body actually does.\n\nFor each state changing external/public function, state the invariant it's supposed to preserve in one sentence, derived from the code's own structure. If no plausible invariant can be inferred, say so; unstatable intent is itself a finding.\n\n**Function & variable count:** Close Stage 0 by stating two numbers explicitly \u2014 \"This contract has **N** distinct external/public functions\" and \"This contract has **M** distinct units of persistent state (top-level variables, plus every struct field and mapping value-type counted separately).\" N and M are the reconciliation targets Stage 1B checks against; do not skip this count.\n\n---\n\n### STAGE 1 \u2014 Variable Lifecycle & Dependency Tracing (PRIMARY MECHANISM)\n\nFor **every** unit of state identified in Stage 0, build this table before doing anything else:\n\n```\nVariable: <name / struct.field / mapping value>\nWrite sites:\n  - <function name>: writes <what value>, under condition <exact condition, including what is NOT checked>\n  - <function name>: ...\nRead/spend sites:\n  - <function name>: uses the value to <do what>, assuming <what must be true about how it was set for this use to be safe>\n  - <function name>: ...\nExternal Dependencies:\n  - <function name>: relies on <ExternalContract.function()> to <do what>. IF THE SOURCE CODE FOR THIS EXTERNAL CONTRACT IS NOT PROVIDED, STATE: \"UNVERIFIED BLACK BOX \u2014 ASSUME EXTERNAL CONTRACT MAY NOT VALIDATE INPUTS OR PREVENT OVERFLOWS\".\n  - Manipulability (independent of black-box status): can the caller (attacker) influence what this call returns within the same transaction e.g(flash loan, self-trade, reentrant state, same-block construction, timing?) State  with reasoning. This question applies even if the external contract is assumed bug-free. If the answer is yes or uncertain AND this value feeds a decision or action, tag it `[BLACK_BOX_MANIPULABLE]` and carry it forward to Stage 6B.\n```\n\nThen, for **every (write site, read site) pair on the same variable**, ask explicitly: *does this write path guarantee what this read path assumes?* Do not answer \"seems fine\" \u2014 state the specific condition under which the write could produce a value the read site wasn't designed to handle, or state that no such condition exists and why.\n\nDo not stop at the first plausible looking pair; go through all of them. Flag every inconsistency found this way as a candidate finding, tagged `[DATAFLOW]`, with the specific write site and read site named.\n\n---\n\n### STAGE 1B \u2014 Cross-Check Pass (Completeness & Internal Ensemble)\n\nStage 1 traces state **by variable**. This pass traces the same contract **by function**, in the opposite direction, specifically to catch what a single traversal order misses \u2014 the same reason a second reviewer reading in a different order catches things the first one didn't.\n\nFor every one of the N functions counted in Stage 0:\n- If it can change state, confirm it appears as a **write site** for at least one variable in the Stage 1 table.\n- If it reads and uses state, confirm it appears as a **read/spend site** for at least one variable.\n- If neither, state why (pure computation, access-control-only gate, etc.).\n\nState explicitly: \"N functions enumerated in Stage 0. N accounted for in Stage 1.\" List any that are not accounted for, and add the missing table rows before continuing. **Do not proceed to Stage 2 while any function is unaccounted for.**\n\nWhere this pass surfaces a write/read relationship the variable-first pass missed, add it as a new row and tag it `[CROSS-CHECK-CATCH]`. A catch here is meaningful signal, not noise \u2014 it means the variable first trace had a genuine blind spot for this specific dependency.\n\n---\n\n### STAGE 2 \u2014 Branch & Path Symmetry Check\n\nFor every function with more than one conditional branch that performs a structurally similar state write or value transfer (if/else, multiple `require` paths to the same effect), check whether the same validation (payment amount, access control, bounds, symmetry of \"increase\" vs \"decrease\" logic) is enforced identically across **every** branch. A check present in one branch and silently absent in a parallel branch is a distinct, high-value bug class in its own right \u2014 do not treat it as a subset of any single checklist category below; flag it directly as `[ASYMMETRY]` with both branches quoted.\n\n---\n\n### STAGE 3 \u2014 Categorical Checklist (SECONDARY NET, not primary method)\n\nOnly after Stages 1\u20132 are complete, use this checklist as a coverage floor for control-flow-centric bug classes that variable-tracing doesn't inherently target:\n\n1. Reentrancy (cross-function, cross-contract, read-only, hooks) \u2014 verify the actual gas forwarded and whether the receiver could realistically execute meaningful logic with it.\n2. Missing/wrong access control, `tx.origin` misuse, bypassed authorization branches.\n3. Unchecked external call return values.\n4. **Integer math bugs \u2014 Version & Type Anchored:** strictly apply the rules from Stage 0. Trace all implicit and explicit downcasts (e.g., `uint256` to `uint128`) for truncation vectors. Check precision loss/rounding-to-zero, and division-before-multiplication.\n5. Price/oracle manipulation (spot-price reliance, `balanceOf`-based LP pricing, stale rounds).\n6. Flashloan amplification of any other flaw.\n7. Front-running / sandwich surfaces (slippage-free swaps, missing deadlines).\n8. Signature/EIP-712 bugs (missing nonce, replay, `ecrecover` edge cases).\n9. Receive/fallback logic triggering unexpected state changes.\n10. First-depositor / empty-pool share-inflation attacks.\n11. Logic short-circuits (inverted conditionals, `>=` vs `>`, missing `require`).\n12. **Proxy / delegatecall storage collisions:** for any proxy, diamond, or delegatecall-based pattern, verify storage slot layout is identical \u2014 and stays identical across every listed upgrade \u2014 between proxy and implementation. Flag any implementation contract that is itself directly callable or initializable.\n13. **Unprotected initializers:** for any `initialize()` / `initializer`-modifier pattern, verify it cannot be called twice, cannot be front-run on a freshly deployed proxy before the legitimate deployer initializes it, and cannot be called directly on the logic contract to seize control of it.\n14. **Unbounded loops / gas-griefing DoS:** any loop bounded by an attacker-influenced or unbounded-growth array/mapping that could exceed block gas limits or be weaponized to grief other users' transactions.\n15. **Cross-chain / bridge replay:** for any contract verifying signatures, messages, or state across chains, confirm chain-ID (or an equivalent domain separator) is bound into what's verified, and that a relayer, validator set, or message-passing assumption isn't silently trusted as a privilege-free party.\n\nDo not limit findings to this list \u2014 anything surfaced in Stages 1\u20132, or anything else your reasoning independently turns up, is equally valid.\n\n---\n\n### STAGE 4 \u2014 Verification (Strict)\n\nTake every candidate from Stages 1\u20133 (`[DATAFLOW]`, `[ASYMMETRY]`, `[INVARIANT_BREAK]`, and checklist-tagged) and try to kill it. A candidate survives only if:\n- It's tied to a specific line/function, not a general concern.\n- For `[DATAFLOW]` findings: the specific write site and read site are named, and the exact condition where they diverge is stated concretely.\n- For `[INVARIANT_BREAK]` findings: the deviation from the standard interface's expected behavior is explicitly stated.\n- For `[BLACK_BOX_RISK]` findings: state explicitly how an attacker could manipulate the call if the external contract uses naive math or lacks validation (e.g., \"If the external contract adds the minted amount to a `uint128` debt without SafeMath, an attacker can trigger an overflow\").\n- For `[BLACK_BOX_MANIPULABLE]` findings: state explicitly how the attacker moves the returned value within a single transaction (flash loan, self-trade, reentrant call, same-block price construction) \u2014 this must hold even under the assumption that the external contract's own logic is correct and bug-free.\n- For reentrancy claims: the external call mechanism and gas context are named.\n- Every value in any math is a variable or public state \u2014 no invented numbers.\n- It holds under the actual Solidity version's semantics.\n\nA verification entry that merely restates the hypothesis in different words is invalid. State briefly why each discarded candidate failed, as a visible discard trail.\n\nFor each surviving flaw, output:\n```\n[FLAW-ID] Short name\n  Where: contract.function#L<line>\n  Class: [DATAFLOW] | [ASYMMETRY] | [INVARIANT_BREAK] | [BLACK_BOX_RISK] | [BLACK_BOX_MANIPULABLE] | <checklist category>\n  Invariant/assumption violated: <the specific write-vs-read mismatch or invariant broken>\n  Severity atomic: <S0..S4>\n  Why it exists: <one-line root cause>\n  Standalone impact: <what an attacker could do in isolation>\n```\n\nEverything that survives this stage is a **provisional** survivor. Proceed to Stage 4B before treating any of these as final.\n\n---\n\n### STAGE 4B \u2014 Adversarial Peer Review\n\nEvery flaw that survived Stage 4 now gets reviewed by a second, independent persona \u2014 not ZeroFox extending its own analysis, but a **hostile peer reviewer** whose only incentive is to get each finding retracted. Fully switch voice for this stage; do not continue in ZeroFox's voice.\n\nFor each Stage 4 survivor, the peer reviewer must argue against it as hard as the evidence allows:\n- Is there a `require`, modifier, or upstream check elsewhere in the contract that the finding's write/read trace missed?\n- Does the stated \"attacker precondition\" quietly assume something non-permissionless?\n- Is the severity inflated relative to what's actually extractable?\n- Would this fail in practice for a mundane reason (gas cost, MEV competition that beats the described attacker to it and makes it unprofitable, a check enforced by a modifier not shown inline)?\n\nA finding survives Stage 4B only if the objections are answered on the record, not dismissed. Output per finding:\n\n```\n[FLAW-ID] Peer review result\n  Objection raised: <the reviewer's strongest counterargument>\n  Response: <why the objection does or doesn't hold, citing the specific line/condition>\n  Verdict: SURVIVES | RETRACTED \u2014 <one-line reason if retracted>\n```\n\nRetracted findings do not appear in Stage 5 or the final verdict, but must still be listed in the discard trail so the report shows what was considered and ruled out.\n\nThis is a mitigation, not a substitute for genuine independent review \u2014 it is still the same underlying model, so it will not catch a blind spot the model has no way of representing at all. It catches sloppy reasoning, inflated severity, and unstated assumptions, not unknown unknowns. Treat findings that survive Stage 4B as more trustworthy, not as proven.\n\n---\n\n### STAGE 5 \u2014 Exploit Chaining (Scaffolded)\n\nFor every flaw that survived Stage 4B, work through these in order:\n\n1. **Max single-call impact:** largest value movement possible in one call, given current/arbitrary valid state.\n2. **Repeatability:** can the call be repeated within one transaction (loop, recursion, reentrant re-entry) before state settles?\n3. **Capital amplification:** can a flash loan or other atomic capital source increase exposure while remaining net-profitable after repayment?\n4. **Ordering dependency:** does any state update happen *after* an external call or price read that a reentrant/sandwiching call could exploit?\n5. **Cross-function composition:** does combining this flaw with any *other* function (even one that looks safe alone) unlock more value than the flaw alone?\n\nOnly write a chain if step 1 resolves concretely. If it can't be completed through 1\u20135 with real state/variables, stop.\n\n```\n[CHAIN-X] Chain name\n  Linked flaws: [FLAW-A] \u2192 [FLAW-B]\n  Functions involved (execution order):\n    1. ...\n  Attacker precondition: <state explicitly \u2014 \"none\" if truly permissionless, or name the exact minimal precondition>\n  Step-by-step PoC flow:\n    1. ...\n  Drain type: FULL | PARTIAL\n  Profitability Math:\n    Formula: <equation using variables \u2014 no invented numbers>\n  Realistic constraints: same-tx or cross-block; gas cost estimation.\n  Severity chained: <S0..S4>\n```\n\n---\n\n### STAGE 6 \u2014 Pre-Verdict Consistency Check (MANDATORY, run before Stage 7)\n\nRe-read every chain's stated `Attacker precondition`. Any chain whose precondition includes an owner-only, admin-only, or otherwise privileged role **must not** be cited in a `CRITICAL`/`HIGH` \"reachable by external attacker\" verdict \u2014 move it to Stage 8. Verify the citation, not just the analysis.\n\n### STAGE 6B \u2014 Black-Box Escalation Check (MANDATORY, run before Stage 7)\n\nCollect every `[BLACK_BOX_MANIPULABLE]` tag recorded in Stage 1 or surfaced as a flaw in Stage 4, whether or not it produced a chain in Stage 5. For each one, ask: **does this dependency sit directly upstream of a solvency, collateral-valuation, or fund-release decision, and does manipulability remain unresolved** (i.e., the answer in Stage 1 was \"yes\" or \"uncertain,\" and no on-chain constraint elsewhere in the contract independently bounds it)?\n\nIf yes for at least one dependency:\n- State explicitly: \"Black-box escalation triggered \u2014 see [dependency name] at [function].\"\n- This overrides Stage 9's normal verdict selection regardless of what Stages 5/7 concluded elsewhere in the contract. A contract cannot be rated `CLEAN`, `LOW`, or `MEDIUM` while a value-gating dependency's manipulability is unresolved \u2014 the honest output is that the rating is unknown, not that it's acceptable.\n- Do not downgrade this to a Stage 8 footnote. Footnoting an unresolved manipulability risk while issuing a confident bounded verdict is the specific failure this stage exists to prevent.\n\nIf no dependency meets this bar, state \"Black-box escalation: none triggered\" and proceed normally.\n\n### STAGE 7 \u2014 Drain Estimation Matrix\n*(Only if \u22651 valid, non-privileged chain survived Stage 6. Otherwise omit.)*\n\n| Chain | Asset Drained | Type | Precondition | Same-Tx? | Profitability Condition |\n|-------|---------------|------|---------------|----------|--------------------------|\n\n### STAGE 8 \u2014 Out-of-Scope, Privileged & Coverage-Limitation Notes\n\nList issues requiring privileged access, governance, or admin collusion, or chains moved here by Stage 6. Mark `PRIVILEGED \u2014 NOT ATTACKER-EXPLOITABLE`.\n\n**Coverage limitations:** aggregate, in one place, everything this analysis could not verify:\n- Every `UNVERIFIED BLACK BOX` dependency flagged in Stage 1, listed together with what would need to be provided to close it, **and its manipulability status from the Stage 1 \"Manipulability\" line (yes / no / uncertain) and whether it triggered Stage 6B.**\n- Any function, file, or imported contract referenced but not included in the pasted source.\n- Any invariant Stage 0 could not state a plausible reason for (\"unstatable intent\" findings).\n- A one-line reminder: this is static analysis only \u2014 no execution, fuzzing, or on-chain simulation was performed.\n\n### STAGE 9 \u2014 Final Verdict\n\n**First, check Stage 6B.** If black-box escalation was triggered, the verdict is mandatory and is not chosen from the list below:\n\n- \ud83d\udfea `UNRATED \u2014 Verdict withheld: unresolved black-box dependency gates a fund-release decision` (cite the dependency, the function, and the decision it gates; this tier supersedes and is not comparable to any tier below \u2014 it is not a severity level, it is a statement that severity cannot be determined)\n\nIf Stage 6B was not triggered, select from:\n\n- \ud83d\udfe5 `CRITICAL \u2014 Full drain reachable by external attacker` (cite chain ID; must have passed Stage 6)\n- \ud83d\udfe7 `HIGH \u2014 Partial drain reachable` (cite chain ID; must have passed Stage 6)\n- \ud83d\udfe8 `MEDIUM \u2014 Griefing / fund lock / temporary loss / destruction of value without direct attacker profit`\n- \ud83d\udfe9 `LOW \u2014 Minor accounting drift, no extractable value`\n- \u2b1c `CLEAN \u2014 No attacker-extractable value found` (valid and preferred if true)\n\nState the verdict alongside a one-line reminder that it reflects static analysis gated by adversarial peer review, not execution \u2014 see Stage 8 for what remains unverified.\n\n---\n\n## \ud83d\udd12 HARD RULES\n\n1. No privileged assumptions in any non-privileged verdict \u2014 enforced explicitly by Stage 6.\n2. No hallucinated math \u2014 every formula uses variables or public state, never invented numbers.\n3. Standard OpenZeppelin patterns are safe by default unless misimplemented.\n4. CLEAN is a valid, preferred outcome when true.\n5. Every claim ties to a specific function/line **and** either a named invariant, a named write/read pair, or a named branch asymmetry.\n6. Honesty over drama \u2014 theoretical chains requiring impossible mempool conditions or unprofitable gas get labeled `NOT PROFITABLE` and downgraded.\n7. **Strict Version & Type Awareness:** `<0.8` overflow is real; `>=0.8` it isn't unless inside `unchecked`. Pre-0.5.0 `view`/`pure` is not compiler-enforced. You MUST trace all type downcasts (e.g., `uint256` to `uint128`) for truncation vectors, regardless of version.\n8. **No Black-Box Trust:** If an external contract is called but its source is not provided, do not assume it safely validates inputs or prevents overflows. Flag it as `[BLACK_BOX_RISK]` and analyze the exploitability if the external contract acts naively. **Separately \u2014 and even if you must assume the external contract is implemented exactly as documented and free of bugs \u2014 ask whether the caller (attacker) can influence what that call returns within the same transaction e.g(flash loan, self-trade, reentrant state, same-block price construction, timing). A black box can be flawless and still be manipulable; naive-input analysis alone does not clear this question. If manipulability cannot be ruled out and the dependency feeds a solvency, withdrawal, or collateral decision, tag it `[BLACK_BOX_MANIPULABLE]` and carry it to Stage 6B \u2014 do not let it settle for a Stage 8 footnote.**\n9. Stage 1's variable trace must be exhaustive over every variable identified in Stage 0, not sampled.\n10. A verification entry that restates its hypothesis instead of engaging the specific mechanism is invalid output.\n11. No flaw reaches Stage 5 chaining or the final verdict without a recorded Stage 4B verdict of `SURVIVES`.\n12. Stage 1B's function-count reconciliation must show zero unaccounted functions before Stage 2 begins.\n13. Every black-box dependency and every out-of-scope file must appear in Stage 8's coverage-limitations rollup \u2014 silence about a gap is not permitted.\n\ud83d\udce5 INPUT FORMAT\n\nTreat the entire user paste as the contract source under audit. If a spec, README, NatSpec block, or stated intent is provided separately, use it to sharpen Stage 0 invariants \u2014 but derive invariants and variable semantics from the code itself if nothing else is given.\n\n\ud83d\udce4 OUTPUT FORMAT\nExecutive Summary (3\u20135 lines, plain English)\nSTAGE 0 \u2014 recon, version anchor, variable inventory, standard-conformance check, function/variable counts\nSTAGE 1 + 1B \u2014 full variable lifecycle trace table (including per-dependency manipulability line), plus the function-first cross-check reconciliation\nSTAGE 2 \u2014 branch symmetry findings\nSTAGE 3 \u2014 checklist-net findings (version & type anchored; 15 categories)\nSTAGE 4 + 4B \u2014 verified survivors, discard trail, and adversarial peer-review results\nSTAGE 5 \u2014 chains (if any)\nSTAGE 6 \u2014 consistency check result (state explicitly what was moved/confirmed)\nSTAGE 6B \u2014 black-box escalation check result (state explicitly whether triggered, and which dependency if so)\nSTAGE 7 \u2014 drain matrix (if any)\nSTAGE 8 \u2014 privileged-only notes and coverage-limitations rollup (including manipulability status per dependency)\nSTAGE 9 \u2014 final verdict (UNRATED if Stage 6B triggered, otherwise selected from the standard tier list)\n\nRecommended mitigations (1 line per surviving flaw/chain)\n\nBegin analysis when the user pastes Solidity source. Wait for the code..\n";
+
+
+// ============================================================
+// ELEMENTS
+// ============================================================
+
+const $ = id => document.getElementById(id);
+
+const baseUrl = $('baseUrl');
+const llmUrl = $('llmUrl');
+const openaiKey = $('openaiKey');
+const etherscanKey = $('etherscanKey');
+
+// ============================================================
+// CONTRACT NAME SKIP LIST
+// ============================================================
+
+const skipContractNameInput =
+  $('skipContractNameInput');
+
+const addSkipContractNameButton =
+  $('addSkipContractNameButton');
+
+const skipListContent =
+  $('skipListContent');
+
+const skipListMessage =
+  $('skipListMessage');
+
+const skipListCount =
+  $('skipListCount');
+
+const chain = $('chain');
+
+const model = $('model');
+const systemPrompt = $('systemPrompt');
+
+const singleMode = $('singleMode');
+const batchMode = $('batchMode');
+
+const singlePane = $('singlePane');
+const batchPane = $('batchPane');
+
+const singleAddress = $('singleAddress');
+const batchInput = $('batchInput');
+const fileInput = $('fileInput');
+
+const startBtn = $('startBtn');
+
+const dashboard = $('dashboard');
+const resultsPanel = $('resultsPanel');
+
+const batchIdEl = $('batchId');
+const batchStatus = $('batchStatus');
+
+const progressFill = $('progressFill');
+const progressText = $('progressText');
+
+const completedCount = $('completedCount');
+const failedCount = $('failedCount');
+const remainingCount = $('remainingCount');
+const totalCount = $('totalCount');
+
+const batchError = $('batchError');
+
+const pauseBtn = $('pauseBtn');
+const resumeBtn = $('resumeBtn');
+const updateBatchConfigBtn =
+  $('updateBatchConfigBtn');
+
+const auditMode = $('auditMode');
+const comLlmAUrl = $('comLlmAUrl');
+const comLlmAModel = $('comLlmAModel');
+const comLlmAKeys = $('comLlmAKeys');
+const comLlmBUrl = $('comLlmBUrl');
+const comLlmBModel = $('comLlmBModel');
+const comLlmBKeys = $('comLlmBKeys');
+
+const itemsEl = $('items');
+const pagerEl = $('pager');
+let currentPage = 0;
+
+const reauditPanel = $('reauditPanel');
+const reauditList = $('reauditList');
+const reauditMessage = $('reauditMessage');
+
+
+// ============================================================
+// STATE
+// ============================================================
+
+let mode = 'single';
+
+let currentBatchId =
+  localStorage.getItem(
+    'contract_auditor_active_batch'
+  ) || null;
+
+let pollTimer = null;
+let reauditPollTimer = null;
+const reauditOpenDetails = new Set();
+
+
+// ============================================================
+// LOAD SAVED SETTINGS
+// ============================================================
+
+baseUrl.value =
+  localStorage.getItem('auditor_base_url') || '';
+
+llmUrl.value =
+  localStorage.getItem('auditor_llm_url') ||
+  'https://aihubmix.com/v1/chat/completions';
+
+openaiKey.value =
+  localStorage.getItem('auditor_openai_key') || '';
+
+etherscanKey.value =
+  localStorage.getItem('auditor_etherscan_key') || '';
+
+model.value =
+  localStorage.getItem('auditor_model') ||
+  'gpt-4o-mini';
+
+systemPrompt.value =
+  localStorage.getItem('auditor_prompt') ||
+  DEFAULT_PROMPT;
+
+auditMode.value = localStorage.getItem('auditor_batch_mode') || 'normal';
+comLlmAUrl.value = localStorage.getItem('auditor_com_a_url') || '';
+comLlmAModel.value = localStorage.getItem('auditor_com_a_model') || '';
+comLlmAKeys.value = localStorage.getItem('auditor_com_a_keys') || '';
+comLlmBUrl.value = localStorage.getItem('auditor_com_b_url') || '';
+comLlmBModel.value = localStorage.getItem('auditor_com_b_model') || '';
+comLlmBKeys.value = localStorage.getItem('auditor_com_b_keys') || '';
+
+
+// ============================================================
+// SAVE SETTINGS
+// ============================================================
+
+[
+  [baseUrl, 'auditor_base_url'],
+  [llmUrl, 'auditor_llm_url'],
+  [openaiKey, 'auditor_openai_key'],
+  [etherscanKey, 'auditor_etherscan_key'],
+  [model, 'auditor_model'],
+  [systemPrompt, 'auditor_prompt']
+]
+.forEach(([element, key]) => {
+
+  element.addEventListener(
+    'input',
+    () => {
+
+      localStorage.setItem(
+        key,
+        element.value
+      );
+
+    }
+  );
+
+});
+
+
+// ============================================================
+// CONTRACT NAME SKIP LIST
+// ============================================================
+
+function getSkipListApiUrl(
+  path = ''
+) {
+
+  const base =
+    apiBase();
+
+  return (
+    base +
+    '/api/contract-skip-list' +
+    path
+  );
+}
+
+
+// ============================================================
+// DISPLAY MESSAGE
+// ============================================================
+
+function setSkipListMessage(
+  message,
+  isError = false
+) {
+
+  if (!skipListMessage) {
+    return;
+  }
+
+  skipListMessage.textContent =
+    message;
+
+  skipListMessage.style.color =
+    isError
+      ? 'var(--err)'
+      : 'var(--ok)';
+}
+
+
+// ============================================================
+// ESCAPE HTML
+// ============================================================
+//
+// Contract names come from the user/database.
+// Never inject raw values into innerHTML.
+// ============================================================
+
+function escapeHtml(
+  value
+) {
+
+  return String(
+    value ?? ''
+  )
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
+}
+
+
+// ============================================================
+// LOAD SKIP LIST
+// ============================================================
+
+async function loadContractSkipList() {
+
+  if (
+    !skipListContent ||
+    !skipListCount
+  ) {
+    return;
+  }
+
+  try {
+
+    skipListContent.innerHTML =
+      `
+        <div
+          style="
+            color:var(--text-dim);
+            font-size:.8rem;
+          "
+        >
+          Loading...
+        </div>
+      `;
+
+    const response =
+      await fetch(
+        getSkipListApiUrl()
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+      throw new Error(
+        data.error ||
+        'Failed to load skip list'
+      );
+    }
+
+    const rules =
+      Array.isArray(
+        data.rules
+      )
+        ? data.rules
+        : [];
+
+    skipListCount.textContent =
+      `${rules.length} contract name${rules.length === 1 ? '' : 's'} currently skipped`;
+
+    if (!rules.length) {
+
+      skipListContent.innerHTML =
+        `
+          <div
+            style="
+              color:var(--text-dim);
+              font-size:.8rem;
+              padding:10px 0;
+            "
+          >
+            No contract names are currently skipped.
+          </div>
+        `;
+
+      return;
+    }
+
+    skipListContent.innerHTML =
+      rules
+        .map(
+          rule => {
+
+            const displayName =
+              escapeHtml(
+                rule.contractName
+              );
+
+            const normalizedName =
+              encodeURIComponent(
+                rule.normalizedName
+              );
+
+            return `
+              <div
+                style="
+                  display:flex;
+                  align-items:center;
+                  justify-content:space-between;
+                  gap:10px;
+                  padding:10px;
+                  margin-bottom:8px;
+                  background:#101317;
+                  border:1px solid var(--border);
+                  border-radius:8px;
+                "
+              >
+
+                <div
+                  style="
+                    min-width:0;
+                    overflow:hidden;
+                  "
+                >
+
+                  <div
+                    style="
+                      font-family:var(--mono);
+                      word-break:break-word;
+                    "
+                  >
+                    ${displayName}
+                  </div>
+
+                  <div
+                    style="
+                      margin-top:4px;
+                      font-size:11px;
+                      color:var(--text-dim);
+                    "
+                  >
+                    Exact name match
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  class="danger remove-skip-name"
+                  data-name="${normalizedName}"
+                  style="
+                    padding:7px 10px;
+                    flex-shrink:0;
+                  "
+                >
+                  Remove
+                </button>
+
+              </div>
+            `;
+          }
+        )
+        .join('');
+
+    // Attach remove handlers.
+
+    skipListContent
+      .querySelectorAll(
+        '.remove-skip-name'
+      )
+      .forEach(
+        button => {
+
+          button.addEventListener(
+            'click',
+            async () => {
+
+              const name =
+                button.dataset.name;
+
+              await removeContractSkipName(
+                name
+              );
+            }
+          );
+        }
+      );
+
+  } catch (error) {
+
+    console.error(
+      '[SKIP LIST] Load failed:',
+      error
+    );
+
+    skipListCount.textContent =
+      'Unable to load skip list';
+
+    skipListContent.innerHTML =
+      `
+        <div
+          style="
+            color:var(--err);
+            font-size:.8rem;
+          "
+        >
+          ${
+            escapeHtml(
+              error.message ||
+              String(error)
+            )
+          }
+        </div>
+      `;
+  }
+}
+
+
+// ============================================================
+// ADD CONTRACT NAME
+// ============================================================
+
+async function addContractSkipName() {
+
+  const contractName =
+    skipContractNameInput
+      ?.value
+      ?.trim();
+
+  if (!contractName) {
+
+    setSkipListMessage(
+      'Enter a contract name first.',
+      true
+    );
+
+    skipContractNameInput?.focus();
+
+    return;
+  }
+
+  try {
+
+    addSkipContractNameButton.disabled =
+      true;
+
+    setSkipListMessage(
+      'Adding contract name...'
+    );
+
+    const response =
+      await fetch(
+        getSkipListApiUrl(),
+        {
+          method:
+            'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+
+          body:
+            JSON.stringify({
+              contractName
+            })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+      throw new Error(
+        data.error ||
+        'Failed to add contract name'
+      );
+    }
+
+    skipContractNameInput.value =
+      '';
+
+    setSkipListMessage(
+      data.message ||
+      'Contract name added.'
+    );
+
+    await loadContractSkipList();
+
+  } catch (error) {
+
+    console.error(
+      '[SKIP LIST] Add failed:',
+      error
+    );
+
+    setSkipListMessage(
+      error.message ||
+      'Failed to add contract name',
+      true
+    );
+
+  } finally {
+
+    addSkipContractNameButton.disabled =
+      false;
+  }
+}
+
+
+// ============================================================
+// REMOVE CONTRACT NAME
+// ============================================================
+
+async function removeContractSkipName(
+  encodedName
+) {
+
+  try {
+
+    const decodedName =
+      decodeURIComponent(
+        encodedName
+      );
+
+    if (
+      !confirm(
+        `Remove "${decodedName}" from the contract skip list?\n\nFuture contracts with this name will be audited again.`
+      )
+    ) {
+      return;
+    }
+
+    setSkipListMessage(
+      'Removing contract name...'
+    );
+
+    const response =
+      await fetch(
+        getSkipListApiUrl(
+          '/' +
+          encodedName
+        ),
+        {
+          method:
+            'DELETE'
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+      throw new Error(
+        data.error ||
+        'Failed to remove contract name'
+      );
+    }
+
+    setSkipListMessage(
+      data.message ||
+      'Contract name removed.'
+    );
+
+    await loadContractSkipList();
+
+  } catch (error) {
+
+    console.error(
+      '[SKIP LIST] Remove failed:',
+      error
+    );
+
+    setSkipListMessage(
+      error.message ||
+      'Failed to remove contract name',
+      true
+    );
+  }
+}
+
+
+// ============================================================
+// SKIP LIST EVENTS
+// ============================================================
+
+addSkipContractNameButton
+  ?.addEventListener(
+    'click',
+    addContractSkipName
+  );
+
+
+skipContractNameInput
+  ?.addEventListener(
+    'keydown',
+    event => {
+
+      if (
+        event.key === 'Enter'
+      ) {
+
+        event.preventDefault();
+
+        addContractSkipName();
+      }
+    }
+  );
+
+
+// ============================================================
+// API BASE
+// ============================================================
+
+function apiBase() {
+
+  return baseUrl.value
+    .trim()
+    .replace(/\/+$/, '');
+
+}
+
+
+// ============================================================
+// MODE
+// ============================================================
+
+singleMode.onclick = () => {
+
+  mode = 'single';
+
+  singleMode.classList.add('active');
+  batchMode.classList.remove('active');
+
+  singlePane.classList.remove('hidden');
+  batchPane.classList.add('hidden');
+
+};
+
+
+batchMode.onclick = () => {
+
+  mode = 'batch';
+
+  batchMode.classList.add('active');
+  singleMode.classList.remove('active');
+
+  singlePane.classList.add('hidden');
+  batchPane.classList.remove('hidden');
+
+};
+
+
+// ============================================================
+// FILE UPLOAD
+// ============================================================
+
+fileInput.addEventListener(
+  'change',
+  event => {
+
+    const file =
+      event.target.files[0];
+
+    if (!file) return;
+
+
+    const reader =
+      new FileReader();
+
+
+    reader.onload = () => {
+
+      batchInput.value =
+        String(reader.result || '');
+
+    };
+
+
+    reader.readAsText(file);
+
+  }
+);
+
+
+// ============================================================
+// START
+// ============================================================
+
+startBtn.onclick = async () => {
+
+  try {
+
+    startBtn.disabled = true;
+
+
+    const normalLlmKeys = openaiKey.value.split(',').map(key=> key.trim()).filter(Boolean);
+    const comConfig = {
+      enabled: auditMode.value === 'com',
+      llmA: {
+        url: comLlmAUrl.value.trim(),
+        model: comLlmAModel.value.trim(),
+        apiKeys: comLlmAKeys.value.split(',').map(key=> key.trim()).filter(Boolean)
+      },
+      llmB: {
+        url: comLlmBUrl.value.trim(),
+        model: comLlmBModel.value.trim(),
+        apiKeys: comLlmBKeys.value.split(',').map(key=> key.trim()).filter(Boolean)
+      }
+    };
+
+    if (auditMode.value === 'com') {
+      if (!comConfig.llmA.url || !comConfig.llmA.model || !comConfig.llmA.apiKeys.length) {
+        throw new Error('COM LLM A requires URL, model and at least one API key.');
+      }
+      if (!comConfig.llmB.url || !comConfig.llmB.model || !comConfig.llmB.apiKeys.length) {
+        throw new Error('COM LLM B requires URL, model and at least one API key.');
+      }
+    } else {
+      if (!llmUrl.value.trim()) throw new Error('Enter the Normal LLM API URL');
+      if (!model.value.trim()) throw new Error('Enter the Normal LLM model');
+      if (!normalLlmKeys.length) throw new Error('Enter at least one Normal LLM API key');
+    }
+
+    if (
+      !etherscanKey.value.trim()
+    ) {
+      throw new Error(
+        'Enter your Etherscan API key'
+      );
+    }
+
+
+    if (mode === 'single') {
+
+      const address =
+        singleAddress.value.trim();
+
+
+      if (!address) {
+        throw new Error(
+          'Enter a contract address'
+        );
+      }
+
+
+      batchInput.value =
+        address;
+
+    }
+
+
+    const rawInput =
+      batchInput.value.trim();
+
+
+    if (!rawInput) {
+
+      throw new Error(
+        'Enter or upload addresses'
+      );
+
+    }
+
+
+    const response =
+      await fetch(
+        `${apiBase()}/api/batch`,
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+
+            'x-openai-keys':
+              normalLlmKeys.join(','),
+
+            'x-etherscan-key':
+              etherscanKey.value.trim()
+          },
+
+          body: JSON.stringify({
+
+            rawInput,
+
+            chainId:
+              chain.value,
+
+            model:
+              model.value.trim(),
+
+            systemPrompt:
+              systemPrompt.value,
+
+            llmUrl:
+              llmUrl.value.trim(),
+
+            mode:
+              auditMode.value === 'com' ? 'com' : 'normal',
+
+            com:
+              comConfig
+
+          })
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        'Could not start batch'
+      );
+
+    }
+
+
+    currentBatchId =
+      data.batchId;
+
+
+    localStorage.setItem(
+      'contract_auditor_active_batch',
+      currentBatchId
+    );
+
+
+    dashboard.classList.remove(
+      'hidden'
+    );
+
+    resultsPanel.classList.remove(
+      'hidden'
+    );
+
+
+    batchIdEl.textContent =
+      currentBatchId;
+
+
+    await refreshBatch();
+
+
+    startPolling();
+
+
+  } catch (error) {
+
+    alert(
+      error.message ||
+      String(error)
+    );
+
+  } finally {
+
+    startBtn.disabled = false;
+
+  }
+
+};
+
+
+// ============================================================
+// REFRESH BATCH
+// ============================================================
+
+async function refreshBatch() {
+
+  if (!currentBatchId) return;
+
+
+  try {
+
+    const response =
+      await fetch(
+        `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}?page=${currentPage}`
+      );
+
+
+    const batch =
+      await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        batch.error ||
+        'Could not load batch'
+      );
+
+    }
+
+
+    renderBatch(batch);
+
+
+  } catch (error) {
+
+    console.error(
+      'Batch refresh error:',
+      error
+    );
+
+  }
+
+}
+
+
+function goToPage(page) {
+  currentPage = page;
+  refreshBatch();
+}
+
+
+// ============================================================
+// RENDER
+// ============================================================
+
+function renderBatch(batch) {
+
+  dashboard.classList.remove(
+    'hidden'
+  );
+
+  resultsPanel.classList.remove(
+    'hidden'
+  );
+
+
+  batchIdEl.textContent =
+    batch.batchId;
+
+
+  const status =
+    batch.status || 'unknown';
+  
+const statusLabels = {
+  queued:
+    'Queued',
+
+  running:
+    'Running',
+
+  completed:
+    'Completed',
+
+  paused:
+    'Paused',
+
+  paused_rate_limit:
+    'Rate Limited — Paused',
+
+  paused_quota:
+    'AI Quota — Paused',
+
+  interrupted:
+    'Interrupted — Resume Available',
+
+  cancelled:
+    'Cancelled'
+};
+
+const readableStatus =
+  statusLabels[status] ||
+  status;
+
+
+
+
+  batchStatus.innerHTML = `
+    <span class="
+      status-badge
+      status-${status}
+    ">
+      ${readableStatus}
+    </span>
+  `;
+
+
+  const total =
+    batch.total || 0;
+
+  const completed =
+    batch.completed || 0;
+
+  const failed = batch.failed || 0; 
+  const skipped = batch.skipped || 0; 
+  const done = completed + failed + skipped;
+
+  const remaining =
+    Math.max(
+      total - done,
+      0
+    );
+
+
+  const percent =
+    total
+      ? Math.round(
+          (done / total) * 100
+        )
+      : 0;
+
+
+  progressFill.style.width =
+    `${percent}%`;
+
+
+  progressText.textContent =
+    `${done} / ${total} (${percent}%)`;
+
+
+  completedCount.textContent =
+    completed;
+
+  failedCount.textContent =
+    failed;
+
+  remainingCount.textContent =
+    remaining;
+
+  totalCount.textContent =
+    total;
+
+
+  if (batch.lastError) {
+
+    batchError.classList.remove(
+      'hidden'
+    );
+
+    batchError.className =
+      'error-box';
+
+    batchError.textContent =
+      batch.lastError;
+
+  } else {
+
+    batchError.classList.add(
+      'hidden'
+    );
+
+  }
+
+
+  renderItems(
+    batch.items || []
+  );
+
+  renderPager(batch);
+
+
+  pauseBtn.disabled =
+    !['running', 'queued']
+      .includes(status);
+
+
+  resumeBtn.disabled =
+    ![
+      'paused',
+      'paused_rate_limit',
+      'interrupted'
+    ]
+    .includes(status);
+  updateBatchConfigBtn.disabled =
+  ![
+    'paused',
+    'paused_rate_limit',
+    'interrupted'
+  ]
+  .includes(status);
+
+  restartBtn.disabled =
+    
+  !currentBatchId ||
+  status === 'running';
+
+  clearBtn.disabled = !currentBatchId;
+
+
+  if (
+    status === 'completed'
+  ) {
+
+    stopPolling();
+
+  }
+
+}
+
+
+// ============================================================
+// RENDER PAGER
+// ============================================================
+
+function renderPager(batch) {
+
+  if (!pagerEl) return;
+
+  const totalPages =
+    Number(batch.totalPages) || 1;
+
+  const page =
+    Number(batch.page) || 0;
+
+  const totalItems =
+    Number(batch.totalItems) || 0;
+
+  if (totalPages <= 1) {
+    pagerEl.innerHTML = '';
+    return;
+  }
+
+  pagerEl.innerHTML = `
+    <button ${page === 0 ? 'disabled' : ''} onclick="goToPage(${page - 1})">Prev</button>
+    <span>Page ${page + 1} of ${totalPages} (${totalItems} contracts)</span>
+    <button ${page >= totalPages - 1 ? 'disabled' : ''} onclick="goToPage(${page + 1})">Next</button>
+  `;
+
+}
+
+
+// ============================================================
+// RENDER ITEMS
+// ============================================================
+
+function renderItems(items) {
+  itemsEl.innerHTML = '';
+
+  const orderedItems =
+    Array.isArray(items)
+      ? [...items].sort(
+          (a, b) =>
+            Number(a?.index ?? 0) -
+            Number(b?.index ?? 0)
+        )
+      : [];
+
+  for (const item of orderedItems) {
+    const row =
+      document.createElement('div');
+
+
+    row.className =
+      'item';
+
+
+    const status =
+      item.status ||
+      'pending';
+
+
+    row.innerHTML = `
+
+      <div class="address">
+
+        #${item.index + 1}
+        ${escapeHtml(item.address)}
+
+      </div>
+
+      <div class="item-meta">
+
+        <span>
+          ${escapeHtml(
+            item.contractName ||
+            'Unknown'
+          )}
+        </span>
+
+        <span class="
+          status-badge
+          status-${status}
+        ">
+
+          ${status}
+
+        </span>
+
+      </div>
+
+      ${
+        item.error
+          ? `
+            <div
+              style="
+                color:var(--err);
+                font-size:.75rem;
+                margin-top:6px
+              "
+            >
+              ${escapeHtml(item.error)}
+            </div>
+          `
+          : ''
+      }
+
+    `;
+
+
+    if (
+      status === 'completed'
+    ) {
+
+      const download =
+        document.createElement(
+          'button'
+        );
+
+
+      download.className =
+        'download-report';
+
+
+      download.textContent =
+        'Download Report';
+
+
+      download.onclick = () => {
+
+        const url =
+          `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}/report/${encodeURIComponent(item.address)}`;
+
+
+        window.location.href =
+          url;
+
+      };
+
+
+      row.appendChild(
+        download
+      );
+
+    }
+
+
+    itemsEl.appendChild(
+      row
+    );
+
+  }
+
+}
+
+
+// ============================================================
+// REAUDIT DASHBOARD
+// ============================================================
+
+async function refreshReauditQueue() {
+  try {
+    const response = await fetch(`${apiBase()}/api/reaudit`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not load Reaudit queue');
+    }
+
+    renderReauditQueue(Array.isArray(data.reaudits) ? data.reaudits : []);
+  } catch (error) {
+    console.error('Reaudit refresh error:', error);
+    if (reauditList && !reauditList.children.length) {
+      reauditMessage.textContent = error.message || String(error);
+    }
+  }
+}
+
+function startReauditPolling() {
+  if (reauditPollTimer) return;
+  refreshReauditQueue();
+  reauditPollTimer = setInterval(refreshReauditQueue, 5000);
+}
+
+function stopReauditPolling() {
+  if (!reauditPollTimer) return;
+  clearInterval(reauditPollTimer);
+  reauditPollTimer = null;
+}
+
+let lastReauditSignature = null;
+let lastReauditRecords = [];
+let reauditFilter = 'action';            // action | progress | done | all
+const reauditExpanded = new Set();       // record ids currently expanded
+
+const REAUDIT_GROUPS = {
+  action:   r => (r.status || 'pending') === 'pending',
+  progress: r => ['running', 'ready', 'applying'].includes(r.status),
+  done:     r => r.status === 'applied',
+  all:      () => true
+};
+
+const REAUDIT_PAGE = 15;
+let reauditVisibleLimit = REAUDIT_PAGE;
+let reauditSearch = '';
+let reauditToolbar = null;
+const reauditTabButtons = {};
+let reauditClearDoneBtn = null;
+let reauditClearIds = [];
+
+function matchesReauditSearch(r) {
+  if (!reauditSearch) return true;
+  const q = reauditSearch;
+  const haystack = [
+    r.mainAddress,
+    r.batchId,
+    ...(Array.isArray(r.externalContracts) ? r.externalContracts.map(c => c.address) : [])
+  ].join(' ').toLowerCase();
+  return haystack.includes(q);
+}
+
+// Press-and-hold guard: the action only fires after `ms` of continuous holding.
+function attachLongPress(el, ms, onTrigger) {
+  let timer = null;
+  el.style.setProperty('--hold-ms', ms + 'ms');
+  const cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    el.classList.remove('holding');
+  };
+  el.addEventListener('pointerdown', e => {
+    if (el.disabled) return;
+    e.stopPropagation();
+    el.classList.add('holding');
+    timer = setTimeout(() => {
+      timer = null;
+      el.classList.remove('holding');
+      onTrigger();
+    }, ms);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => el.addEventListener(t, cancel));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!el.disabled) reauditMessage.textContent = 'Press and hold the button to clear.';
+  });
+}
+
+async function clearReauditRecords(ids) {
+  if (!ids.length) return;
+  try {
+    const response = await fetch(`${apiBase()}/api/reaudit/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not clear Reaudit records');
+
+    ids.forEach(id => reauditExpanded.delete(String(id)));
+    await refreshReauditQueue();
+    reauditMessage.textContent = `Cleared ${data.deleted} finished Reaudit record(s).`;
+  } catch (error) {
+    reauditMessage.textContent = error.message || String(error);
+  }
+}
+
+function ensureReauditToolbar() {
+  if (reauditToolbar && reauditToolbar.isConnected) return;
+
+  reauditToolbar = document.createElement('div');
+  reauditToolbar.className = 'reaudit-toolbar';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'reaudit-tabs';
+  [['action', 'Needs action'], ['progress', 'In progress'], ['done', 'Done'], ['all', 'All']]
+    .forEach(([key, label]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'reaudit-tab';
+      btn.dataset.label = label;
+      btn.onclick = () => {
+        reauditFilter = key;
+        reauditVisibleLimit = REAUDIT_PAGE;
+        rerenderReauditFromCache();
+      };
+      reauditTabButtons[key] = btn;
+      tabs.appendChild(btn);
+    });
+
+  const row = document.createElement('div');
+  row.className = 'reaudit-toolbar-row';
+
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'reaudit-search';
+  search.placeholder = 'Search address or batch ID…';
+  let searchTimer = null;
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      reauditSearch = search.value.trim().toLowerCase();
+      reauditVisibleLimit = REAUDIT_PAGE;
+      rerenderReauditFromCache();
+    }, 150);
+  });
+
+  reauditClearDoneBtn = document.createElement('button');
+  reauditClearDoneBtn.type = 'button';
+  reauditClearDoneBtn.className = 'danger hold-btn';
+  reauditClearDoneBtn.title = 'Press and hold to clear finished (applied) Reaudit records';
+  attachLongPress(reauditClearDoneBtn, 1200, () => clearReauditRecords(reauditClearIds.slice()));
+
+  row.appendChild(search);
+  row.appendChild(reauditClearDoneBtn);
+  reauditToolbar.appendChild(tabs);
+  reauditToolbar.appendChild(row);
+  reauditList.parentNode.insertBefore(reauditToolbar, reauditList);
+}
+
+function updateReauditToolbar(searched) {
+  ensureReauditToolbar();
+  for (const [key, btn] of Object.entries(reauditTabButtons)) {
+    btn.textContent = `${btn.dataset.label} (${searched.filter(REAUDIT_GROUPS[key]).length})`;
+    btn.classList.toggle('active', reauditFilter === key);
+  }
+  reauditClearIds = searched.filter(REAUDIT_GROUPS.done).map(r => String(r._id));
+  reauditClearDoneBtn.disabled = !reauditClearIds.length;
+  reauditClearDoneBtn.textContent = reauditSearch
+    ? `🗑 Hold to clear ${reauditClearIds.length} matching done`
+    : `🗑 Hold to clear ${reauditClearIds.length} done`;
+}
+
+function rerenderReauditFromCache() {
+  lastReauditSignature = null;
+  renderReauditQueue(lastReauditRecords);
+}
+
+function reauditSignature(records) {
+  // Ignore huge source blobs; only real state changes should trigger a redraw.
+  return JSON.stringify(records, (key, value) =>
+    (key === 'source' || key === 'mainSource')
+      ? (value ? String(value).length : 0)
+      : value
+  );
+}
+
+function renderReauditQueue(allRecords) {
+  lastReauditRecords = allRecords;
+  const searched = reauditSearch ? allRecords.filter(matchesReauditSearch) : allRecords;
+  const matches = searched.filter(REAUDIT_GROUPS[reauditFilter] || REAUDIT_GROUPS.all);
+  const records = matches.slice(0, reauditVisibleLimit);
+  if (!allRecords.length) {
+    lastReauditSignature = null;
+    reauditPanel.classList.add('hidden');
+    reauditList.innerHTML = '';
+    return;
+  }
+
+  // Polling fires every 5s. If nothing changed, do NOT rebuild the DOM,
+  // otherwise the page jumps to the top and inner scroll boxes reset.
+  const signature = [reauditFilter, reauditSearch, reauditVisibleLimit, [...reauditExpanded].join(',')].join('|')
+    + '|' + reauditSignature(allRecords);
+  if (signature === lastReauditSignature && reauditList.children.length) {
+    return;
+  }
+  lastReauditSignature = signature;
+
+  // ---- Snapshot UI state before the rebuild ----
+  const pageScrollY = window.scrollY;
+  const savedInner = {};   // "<recordId>:<n>" -> scrollTop of each result box
+  const savedInputs = {};  // recordId -> { value, focused }
+  reauditList.querySelectorAll('.reaudit-card[data-card-id]').forEach(card => {
+    const id = card.dataset.cardId;
+    card.querySelectorAll('.reaudit-result').forEach((el, n) => {
+      savedInner[`${id}:${n}`] = el.scrollTop;
+    });
+    const input = card.querySelector('.reaudit-address-input');
+    if (input) {
+      savedInputs[id] = {
+        value: input.value,
+        focused: document.activeElement === input
+      };
+    }
+  });
+
+reauditPanel.classList.remove('hidden');
+reauditMessage.textContent = '';
+
+// Remember which original audit reports are currently open
+reauditList.querySelectorAll('details[data-reaudit-id]').forEach(details => {
+  if (details.open) {
+    reauditOpenDetails.add(details.dataset.reauditId);
+  }
+});
+
+reauditList.innerHTML = '';
+
+  updateReauditToolbar(searched);
+
+  if (!records.length) {
+    const empty = document.createElement('div');
+    empty.className = 'reaudit-empty';
+    empty.textContent = reauditSearch ? 'No records match your search.' : 'Nothing in this view.';
+    reauditList.appendChild(empty);
+  }
+
+  for (const record of records) {
+    const card = document.createElement('div');
+    card.className = 'reaudit-card';
+    card.dataset.cardId = String(record._id);
+
+    const status = record.status || 'pending';
+    const modeLabel = record.mode === 'com' ? 'COM' : 'Normal';
+    const originalResult = record.mode === 'com'
+      ? `AUDITOR A\n\n${record.originalCom?.llmA?.final?.result || record.originalCom?.llmA?.initial?.result || '[missing]'}\n\n==============================\n\nAUDITOR B\n\n${record.originalCom?.llmB?.final?.result || record.originalCom?.llmB?.initial?.result || '[missing]'}`
+      : (record.originalResult || '[missing]');
+
+    const extList = Array.isArray(record.externalContracts) ? record.externalContracts : [];
+    const verifiedCount = extList.filter(x => x.sourceStatus === 'verified' && x.source).length;
+    const isOpen = reauditExpanded.has(String(record._id));
+    card.classList.toggle('collapsed', !isOpen);
+
+    card.innerHTML = `
+      <div class="reaudit-head">
+        <div class="reaudit-head-main">
+          <span class="reaudit-chevron">▶</span>
+          <div style="min-width:0">
+            <div class="reaudit-title">${escapeHtml(record.mainAddress)}</div>
+            <div class="reaudit-meta">
+              Batch: ${escapeHtml(record.batchId)} · #${Number(record.originalIndex || 0) + 1} · ${escapeHtml(record.chainId || '')} · ${modeLabel}
+            </div>
+          </div>
+        </div>
+        <div class="reaudit-head-right">
+          <span class="reaudit-chip">${verifiedCount}/${extList.length} verified</span>
+          <span class="status-badge status-${escapeHtml(status)}">${escapeHtml(status)}</span>
+        </div>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">FIRST LLM RESULT</div>
+        <details data-reaudit-id="${escapeHtml(String(record._id))}">
+  <summary>Open original audit result</summary>
+          <div class="reaudit-result">${escapeHtml(originalResult)}</div>
+        </details>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">ORIGINAL BLACK-BOX ESCALATION</div>
+        <div class="reaudit-result">${escapeHtml(record.originalBlackBoxEscalation || 'See the first result above.')}</div>
+      </div>
+
+      <div class="reaudit-section">
+        <div class="reaudit-section-title">EXTERNAL CONTRACTS</div>
+        <div class="reaudit-contracts"></div>
+      </div>
+    `;
+
+    if (status === 'applied') {
+      const clearOne = document.createElement('button');
+      clearOne.type = 'button';
+      clearOne.className = 'danger hold-btn reaudit-clear-one';
+      clearOne.textContent = '🗑 hold';
+      clearOne.title = 'Press and hold to clear this finished record';
+      attachLongPress(clearOne, 800, () => clearReauditRecords([String(record._id)]));
+      card.querySelector('.reaudit-head-right').appendChild(clearOne);
+    }
+
+    // Wrap everything after the header into a collapsible body
+    const headEl = card.querySelector('.reaudit-head');
+    const body = document.createElement('div');
+    body.className = 'reaudit-body';
+    while (headEl.nextElementSibling) body.appendChild(headEl.nextElementSibling);
+    card.appendChild(body);
+
+    headEl.onclick = () => {
+      const id = String(record._id);
+      if (reauditExpanded.has(id)) reauditExpanded.delete(id);
+      else reauditExpanded.add(id);
+      rerenderReauditFromCache();
+    };
+
+    const contractsEl = card.querySelector('.reaudit-contracts');
+    const contracts = Array.isArray(record.externalContracts) ? record.externalContracts : [];
+    const originalDetails = card.querySelector(
+  'details[data-reaudit-id]'
+);
+
+if (originalDetails && reauditOpenDetails.has(String(record._id))) {
+  originalDetails.open = true;
+}
+
+if (originalDetails) {
+  originalDetails.addEventListener('toggle', () => {
+    const id = String(record._id);
+
+    if (originalDetails.open) {
+      reauditOpenDetails.add(id);
+    } else {
+      reauditOpenDetails.delete(id);
+    }
+  });
+}
+    for (const contract of contracts) {
+      const row = document.createElement('div');
+      row.className = 'reaudit-contract';
+      const verified = contract.sourceStatus === 'verified' && contract.source;
+      row.innerHTML = `
+        <div class="reaudit-contract-address">${escapeHtml(contract.address)}</div>
+        <div class="reaudit-status">${verified ? '✓ VERIFIED — included' : '○ UNVERIFIED — skipped from LLM'}${contract.isProxy ? ` · proxy → ${escapeHtml(contract.implementation || 'unknown')}` : ''}</div>
+      `;
+      contractsEl.appendChild(row);
+    }
+
+    if (!contracts.length) {
+      contractsEl.innerHTML = '<div class="reaudit-empty">No external contracts added yet.</div>';
+    }
+
+    if (status === 'pending') {
+      const addRow = document.createElement('div');
+      addRow.className = 'reaudit-add-row';
+      addRow.innerHTML = `
+        <input class="reaudit-address-input" placeholder="0x external contract address" />
+        <button type="button" class="secondary reaudit-add-button">+ Add Contract</button>
+      `;
+      card.querySelector('.reaudit-section:last-of-type').appendChild(addRow);
+
+
+      const hasVerifiedSource = contracts.some(
+      x => x.sourceStatus === 'verified' && x.source
+        );
+      const addButton = addRow.querySelector('.reaudit-add-button');
+      const input = addRow.querySelector('.reaudit-address-input');
+
+      addButton.onclick = () => addReauditContract(record._id, input, addButton);
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          addReauditContract(record._id, input, addButton);
+        }
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'reaudit-actions';
+actions.innerHTML = `
+  <button type="button" class="secondary reaudit-run-button">
+    ${hasVerifiedSource ? 'RUN REAUDIT' : 'ADD VERIFIED CONTRACT FIRST'}
+  </button>
+  <button type="button" class="danger reaudit-skip-button">SKIP</button>
+`;
+      body.appendChild(actions);
+
+      const runButton = actions.querySelector('.reaudit-run-button');
+      const skipButton = actions.querySelector('.reaudit-skip-button');
+      runButton.disabled = !contracts.some(x => x.sourceStatus === 'verified' && x.source);
+      runButton.onclick = () => runReaudit(record._id, runButton);
+      skipButton.onclick = () => skipReaudit(record._id, skipButton);
+
+
+      const stageNote = document.createElement('div');
+stageNote.className = 'reaudit-status';
+stageNote.style.marginTop = '10px';
+
+if (hasVerifiedSource) {
+  stageNote.textContent =
+    'Verified external source available — click RUN REAUDIT to continue.';
+} else {
+  stageNote.textContent =
+    'Waiting for at least one verified external contract source.';
+}
+
+body.appendChild(stageNote);
+    }
+
+    if (status === 'ready') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = record.skipped
+        ? 'Skipped — waiting for the batch worker to apply this result.'
+        : 'Reaudit complete — waiting for the batch worker priority slot.';
+      body.appendChild(note);
+    }
+
+    if (status === 'applying') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = 'Applying final Reaudit result to the batch item...';
+      body.appendChild(note);
+    }
+
+    if (status === 'applied') {
+      const note = document.createElement('div');
+      note.className = 'reaudit-status';
+      note.style.marginTop = '10px';
+      note.textContent = record.skipped ? 'Reaudit skipped and closed.' : 'Reaudit applied to the final audit result.';
+      body.appendChild(note);
+    }
+
+    if (record.error) {
+      const error = document.createElement('div');
+      error.className = 'error-box';
+      error.style.marginTop = '10px';
+      error.textContent = record.error;
+      body.appendChild(error);
+    }
+
+    reauditList.appendChild(card);
+  }
+
+  if (matches.length > records.length) {
+    const remaining = matches.length - records.length;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'secondary reaudit-more';
+    more.textContent = `Show ${Math.min(REAUDIT_PAGE, remaining)} more (${remaining} remaining)`;
+    more.onclick = () => { reauditVisibleLimit += REAUDIT_PAGE; rerenderReauditFromCache(); };
+    reauditList.appendChild(more);
+  }
+  if (matches.length) {
+    const note = document.createElement('div');
+    note.className = 'reaudit-count-note';
+    note.textContent = `Showing ${records.length} of ${matches.length}`;
+    reauditList.appendChild(note);
+  }
+
+  // ---- Restore UI state after the rebuild ----
+  reauditList.querySelectorAll('.reaudit-card[data-card-id]').forEach(card => {
+    const id = card.dataset.cardId;
+    card.querySelectorAll('.reaudit-result').forEach((el, n) => {
+      const top = savedInner[`${id}:${n}`];
+      if (top) el.scrollTop = top;
+    });
+    const saved = savedInputs[id];
+    const input = card.querySelector('.reaudit-address-input');
+    if (saved && input) {
+      input.value = saved.value;
+      if (saved.focused) input.focus({ preventScroll: true });
+    }
+  });
+  window.scrollTo(0, pageScrollY);
+}
+
+async function addReauditContract(id, input, button) {
+  const address = input.value.trim();
+  if (!address) return alert('Enter the external contract address.');
+
+  try {
+    button.disabled = true;
+    button.textContent = 'Fetching...';
+
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not add external contract');
+
+    input.value = '';
+    await refreshReauditQueue();
+  } catch (error) {
+    alert(error.message || String(error));
+  } finally {
+    button.disabled = false;
+    button.textContent = '+ Add Contract';
+  }
+}
+
+async function runReaudit(id, button) {
+  if (!confirm('Run this one-time Reaudit now?')) return;
+
+  try {
+    button.disabled = true;
+    button.textContent = 'RUNNING...';
+
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Reaudit failed');
+
+    await refreshReauditQueue();
+    await refreshBatch();
+  } catch (error) {
+    alert(error.message || String(error));
+    await refreshReauditQueue();
+  }
+}
+
+async function skipReaudit(id, button) {
+  if (!confirm('Skip this Reaudit permanently? The original UNRATED result will remain the final result.')) return;
+
+  try {
+    button.disabled = true;
+    const response = await fetch(`${apiBase()}/api/reaudit/${encodeURIComponent(id)}/skip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not skip Reaudit');
+
+    await refreshReauditQueue();
+    await refreshBatch();
+  } catch (error) {
+    alert(error.message || String(error));
+    await refreshReauditQueue();
+  }
+}
+
+
+// ============================================================
+// HTML ESCAPE
+// ============================================================
+
+function escapeHtml(value) {
+
+  const div =
+    document.createElement('div');
+
+
+  div.textContent =
+    String(value || '');
+
+
+  return div.innerHTML;
+
+}
+
+
+
+
+
+// ============================================================
+// UPDATE EXISTING BATCH CONFIGURATION
+// ============================================================
+//
+// IMPORTANT:
+//
+// This does NOT restart the batch.
+// This does NOT delete results.
+// This does NOT reset progress.
+//
+// It only updates the model, system prompt and LLM endpoint
+// stored inside the existing MongoDB batch.
+//
+// The batch must be paused first.
+// ============================================================
+
+updateBatchConfigBtn.onclick =
+  async () => {
+
+    if (!currentBatchId) {
+
+      alert(
+        'There is no active batch.'
+      );
+
+      return;
+
+    }
+
+
+    // ----------------------------------------------------------
+    // Ask the backend for the CURRENT batch state first.
+    // This prevents accidentally changing a running batch.
+    // ----------------------------------------------------------
+
+    updateBatchConfigBtn.disabled =
+      true;
+
+
+    try {
+
+      const stateResponse =
+        await fetch(
+          `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}`
+        );
+
+
+      const batch =
+        await stateResponse.json();
+
+
+      if (
+        !stateResponse.ok
+      ) {
+
+        throw new Error(
+          batch.error ||
+          'Could not load current batch'
+        );
+
+      }
+
+
+      const currentStatus =
+        batch.status;
+
+
+      if (
+        ![
+          'paused',
+          'paused_rate_limit',
+          'interrupted'
+        ].includes(
+          currentStatus
+        )
+      ) {
+
+        throw new Error(
+          'Pause the batch before applying a new model or prompt.'
+        );
+
+      }
+
+
+      // --------------------------------------------------------
+      // READ CURRENT UI SETTINGS
+      // --------------------------------------------------------
+
+      const newModel =
+        model.value.trim();
+
+      const newPrompt =
+        systemPrompt.value;
+
+      const newLlmUrl =
+        llmUrl.value.trim();
+
+      // Optional: blank means "don't change my existing keys".
+      const newApiKeys =
+        openaiKey.value
+          .split(',')
+          .map(key => key.trim())
+          .filter(Boolean);
+
+      const newEtherscanKey =
+        etherscanKey.value.trim();
+
+      const selectedBatchMode = auditMode.value === 'com' ? 'com' : 'normal';
+      const splitKeys = value => String(value || '').split(',').map(k => k.trim()).filter(Boolean);
+      const comConfig = {
+        enabled: selectedBatchMode === 'com',
+        llmA: { url: comLlmAUrl.value.trim(), model: comLlmAModel.value.trim(), apiKeys: splitKeys(comLlmAKeys.value) },
+        llmB: { url: comLlmBUrl.value.trim(), model: comLlmBModel.value.trim(), apiKeys: splitKeys(comLlmBKeys.value) }
+      };
+
+      if (selectedBatchMode === 'com' && (!comConfig.llmA.url || !comConfig.llmA.model || !comConfig.llmA.apiKeys.length || !comConfig.llmB.url || !comConfig.llmB.model || !comConfig.llmB.apiKeys.length)) {
+        throw new Error('COM mode requires endpoint, model and at least one API key for both LLM A and LLM B.');
+      }
+
+
+      if (selectedBatchMode === 'normal' && !newModel) {
+        throw new Error('Normal model cannot be empty.');
+      }
+
+
+      if (!newPrompt.trim()) {
+
+        throw new Error(
+          'System prompt cannot be empty.'
+        );
+
+      }
+
+
+      if (selectedBatchMode === 'normal' && !newLlmUrl) {
+        throw new Error('Normal LLM endpoint cannot be empty.');
+      }
+
+
+      // --------------------------------------------------------
+      // CONFIRM
+      // --------------------------------------------------------
+
+      const confirmed =
+        confirm(
+          'Update this paused batch to the current Model / Prompt settings?\n\n' +
+          `Model:\n${newModel}\n\n` +
+          'Your existing completed contracts and progress will NOT be reset.'
+        );
+
+
+      if (!confirmed) {
+
+        return;
+
+      }
+
+
+      // --------------------------------------------------------
+      // SEND CONFIGURATION TO BACKEND
+      // --------------------------------------------------------
+
+      const response =
+        await fetch(
+          `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}/config`,
+          {
+
+            method:
+              'POST',
+
+            headers: {
+
+              'Content-Type':
+                'application/json'
+
+            },
+
+            body:
+              JSON.stringify({
+
+                model:
+                  newModel,
+
+                systemPrompt:
+                  newPrompt,
+
+                llmUrl:
+                  newLlmUrl,
+
+                llmApiKeys:
+                  newApiKeys,
+
+                etherscanKey:
+                  newEtherscanKey,
+
+                mode: selectedBatchMode,
+
+                com: comConfig
+
+              })
+
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok ||
+        !data.ok
+      ) {
+
+        throw new Error(
+          data.error ||
+          'Could not update batch configuration'
+        );
+
+      }
+
+
+      // --------------------------------------------------------
+      // SUCCESS
+      // --------------------------------------------------------
+
+      localStorage.setItem('auditor_batch_mode', selectedBatchMode);
+      localStorage.setItem('auditor_com_a_url', comConfig.llmA.url);
+      localStorage.setItem('auditor_com_a_model', comConfig.llmA.model);
+      localStorage.setItem('auditor_com_a_keys', comLlmAKeys.value);
+      localStorage.setItem('auditor_com_b_url', comConfig.llmB.url);
+      localStorage.setItem('auditor_com_b_model', comConfig.llmB.model);
+      localStorage.setItem('auditor_com_b_keys', comLlmBKeys.value);
+
+      alert(
+        'Batch configuration updated successfully.\n\n' +
+        `Model: ${data.config.model}\n` +
+        `LLM API key(s) changed: ${data.config.apiKeysUpdated ? 'yes' : 'no (kept existing)'}\n` +
+        `Etherscan key changed: ${data.config.etherscanKeyUpdated ? 'yes' : 'no (kept existing)'}\n\n` +
+        'The new configuration will be used when you Resume the batch.'
+      );
+
+
+      await refreshBatch();
+
+
+    } catch (error) {
+
+      console.error(
+        'Batch configuration update error:',
+        error
+      );
+
+
+      alert(
+        error.message ||
+        String(error)
+      );
+
+
+    } finally {
+
+      updateBatchConfigBtn.disabled =
+        false;
+
+    }
+
+  };
+// ============================================================
+// PAUSE
+// ============================================================
+
+pauseBtn.onclick =
+async () => {
+
+  if (!currentBatchId) return;
+
+
+  await fetch(
+    `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}/pause`,
+    {
+      method: 'POST'
+    }
+  );
+
+
+  await refreshBatch();
+
+};
+
+
+// ============================================================
+// RESUME
+// ============================================================
+
+resumeBtn.onclick =
+async () => {
+
+  if (!currentBatchId) return;
+
+
+  await fetch(
+    `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}/resume`,
+    {
+      method: 'POST'
+    }
+  );
+
+
+  await refreshBatch();
+
+  startPolling();
+
+};
+
+// ============================================================
+// RESTART FROM BEGINNING
+// ============================================================
+
+restartBtn.onclick =
+  async () => {
+
+    if (
+      !currentBatchId
+    ) {
+      return;
+    }
+
+
+    const confirmed =
+      confirm(
+        'Restart this batch from address #1?\n\n' +
+        'All previous audit results in this batch will be cleared.'
+      );
+
+
+    if (!confirmed) {
+      return;
+    }
+
+
+    restartBtn.disabled =
+      true;
+
+
+    try {
+
+      const response =
+        await fetch(
+          `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}/restart`,
+          {
+            method:
+              'POST'
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          data.error ||
+          'Could not restart batch'
+        );
+      }
+
+
+      await refreshBatch();
+
+      startPolling();
+
+
+    } catch (error) {
+
+      alert(
+        error.message ||
+        String(error)
+      );
+
+
+    } finally {
+
+      restartBtn.disabled =
+        false;
+    }
+  };
+
+
+// ============================================================
+// CLEAR BATCH
+// ============================================================
+
+clearBtn.onclick =
+  async () => {
+
+    if (
+      !currentBatchId
+    ) {
+      return;
+    }
+
+
+    const confirmed =
+      confirm(
+        'CLEAR THIS BATCH?\n\n' +
+        'This permanently deletes the batch, its addresses, its saved audit results, and its Reaudit queue entries.\n\n' +
+        'This cannot be undone.'
+      );
+
+
+    if (!confirmed) {
+      return;
+    }
+
+
+    clearBtn.disabled =
+      true;
+
+
+    try {
+
+      stopPolling();
+
+
+      const response =
+        await fetch(
+          `${apiBase()}/api/batch/${encodeURIComponent(currentBatchId)}`,
+          {
+            method:
+              'DELETE'
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          data.error ||
+          'Could not clear batch'
+        );
+      }
+
+
+      localStorage.removeItem(
+        'contract_auditor_active_batch'
+      );
+
+
+      currentBatchId =
+        null;
+
+
+      dashboard.classList.add(
+        'hidden'
+      );
+
+
+      resultsPanel.classList.add(
+        'hidden'
+      );
+
+
+      batchInput.value =
+        '';
+
+
+      fileInput.value =
+        '';
+
+
+      batchIdEl.textContent =
+        '—';
+
+
+      // The server also deleted this batch's Reaudit records; refresh the
+      // queue right now so the cleared cards disappear immediately.
+      await refreshReauditQueue();
+
+
+      alert(
+        'Batch cleared. You can now start a new batch from the beginning.'
+      );
+
+
+    } catch (error) {
+
+      alert(
+        error.message ||
+        String(error)
+      );
+
+
+    } finally {
+
+      clearBtn.disabled =
+        false;
+    }
+  };
+
+
+// ============================================================
+// POLLING
+// ============================================================
+
+function startPolling() {
+
+  stopPolling();
+
+
+  pollTimer =
+    setInterval(
+      refreshBatch,
+      3000
+    );
+
+}
+
+
+function stopPolling() {
+
+  if (pollTimer) {
+
+    clearInterval(
+      pollTimer
+    );
+
+    pollTimer = null;
+
+  }
+
+}
+
+
+const rateStatusButton =
+  document.getElementById(
+    'rateStatusButton'
+  );
+
+const rateDrawer =
+  document.getElementById(
+    'rateDrawer'
+  );
+
+const closeRateDrawer =
+  document.getElementById(
+    'closeRateDrawer'
+  );
+
+
+rateStatusButton?.addEventListener(
+  'click',
+  () => {
+
+    rateDrawer.classList.add(
+      'open'
+    );
+
+    loadRateDashboard();
+  }
+);
+
+
+closeRateDrawer?.addEventListener(
+  'click',
+  () => {
+
+    rateDrawer.classList.remove(
+      'open'
+    );
+  }
+);
+
+
+function formatCooldown(ms) {
+
+  if (!ms || ms <= 0) {
+    return 'Ready';
+  }
+
+  const seconds =
+    Math.ceil(ms / 1000);
+
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const minutes =
+    Math.floor(seconds / 60);
+
+  const remaining =
+    seconds % 60;
+
+  return `${minutes}m ${remaining}s`;
+}
+
+
+async function loadRateDashboard() {
+
+  const content =
+    document.getElementById(
+      'rateDashboardContent'
+    );
+
+  const globalStatus =
+    document.getElementById(
+      'rateGlobalStatus'
+    );
+
+  if (!content || !globalStatus) {
+    console.error(
+      '[RATE DASHBOARD] Required dashboard elements not found'
+    );
+    return;
+  }
+
+
+  try {
+
+    content.innerHTML =
+      'Loading rate intelligence...';
+
+
+    const response =
+      await fetch(
+        `${apiBase()}/api/batch/llm-rate-status`
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        'Failed to load rate status'
+      );
+    }
+
+
+    const global =
+      data.global || {};
+
+    const keys =
+      Array.isArray(data.keys)
+        ? data.keys
+        : [];
+
+
+    // ========================================================
+    // HEADER STATUS
+    // ========================================================
+
+    globalStatus.textContent =
+      `${global.availableKeys || 0}/${global.totalKeys || 0} keys available` +
+      (
+        global.staleProfiles > 0
+          ? ` • ${global.staleProfiles} stale profile(s)`
+          : ''
+      );
+
+
+    // ========================================================
+    // GLOBAL CARD
+    // ========================================================
+
+    let html = `
+      <div class="rate-global-card">
+
+        <div class="rate-key-header">
+
+          <strong>
+            Global Controller
+          </strong>
+
+          <span>
+            ${
+              global.queueActive
+                ? '🟢 Active'
+                : '⚪ Idle'
+            }
+          </span>
+
+        </div>
+
+
+        <div class="rate-grid">
+
+          <div class="rate-metric">
+
+            <div class="rate-metric-label">
+              Configured Keys
+            </div>
+
+            <div class="rate-metric-value">
+              ${global.totalKeys || 0}
+            </div>
+
+          </div>
+
+
+          <div class="rate-metric">
+
+            <div class="rate-metric-label">
+              Available
+            </div>
+
+            <div class="rate-metric-value">
+              ${global.availableKeys || 0}
+            </div>
+
+          </div>
+
+
+          <div class="rate-metric">
+
+            <div class="rate-metric-label">
+              Cooling Down
+            </div>
+
+            <div class="rate-metric-value">
+              ${
+                global.cooldownKeys ??
+                global.coolingKeys ??
+                0
+              }
+            </div>
+
+          </div>
+
+
+          <div class="rate-metric">
+
+            <div class="rate-metric-label">
+              Disabled
+            </div>
+
+            <div class="rate-metric-value">
+              ${global.disabledKeys || 0}
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    `;
+
+
+    // ========================================================
+    // NO KEYS
+    // ========================================================
+
+    if (!keys.length) {
+
+      html += `
+        <div class="rate-global-card">
+
+          No active key profiles yet.
+
+          <br><br>
+
+          Start or resume a batch to initialize
+          rate intelligence for your configured keys.
+
+        </div>
+      `;
+    }
+
+
+    // ========================================================
+    // KEY CARDS
+    // ========================================================
+
+    for (
+      const key of keys
+    ) {
+
+      const successThreshold =
+        Number(
+          key.successThreshold || 1
+        );
+
+      const consecutiveSuccesses =
+        Number(
+          key.consecutiveSuccesses || 0
+        );
+
+
+      const progress =
+        Math.min(
+          100,
+          (
+            consecutiveSuccesses /
+            successThreshold
+          ) * 100
+        );
+
+
+      html += `
+
+        <div class="rate-key-card">
+
+
+          <div class="rate-key-header">
+
+            <strong>
+              🔑 •••${
+                key.keyId ||
+                key.keyFingerprint ||
+                'unknown'
+              }
+            </strong>
+
+
+            <span
+              class="
+                rate-status-pill
+                status-${key.status || 'unknown'}
+              "
+            >
+              ${key.status || 'unknown'}
+            </span>
+
+          </div>
+
+
+          <div
+            style="
+              font-size:12px;
+              opacity:.7;
+              margin-bottom:12px;
+            "
+          >
+            ${
+              key.activity ||
+              'No recent activity'
+            }
+          </div>
+
+
+          <div class="rate-grid">
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Current Interval
+              </div>
+
+              <div class="rate-metric-value">
+                ${key.currentIntervalMs || 0}ms
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Fastest Safe
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.fastestKnownSafeMs ||
+                  0
+                }ms
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Rate Limits
+              </div>
+
+              <div class="rate-metric-value">
+                ${key.rateLimitHits || 0}
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Empty Response Streak
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.emptyResponseStreak ||
+                  0
+                }
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Total Empty Responses
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.totalEmptyResponses ||
+                  0
+                }
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Requests / 1m
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.requestsLastMinute ||
+                  0
+                }
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Requests / 30m
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.requestsLast30Minutes ||
+                  0
+                }
+              </div>
+
+            </div>
+
+
+            <div class="rate-metric">
+
+              <div class="rate-metric-label">
+                Successes
+              </div>
+
+              <div class="rate-metric-value">
+                ${
+                  key.totalSuccesses ||
+                  0
+                }
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div
+            style="
+              margin-top:14px;
+              font-size:12px;
+            "
+          >
+
+            Learning progress:
+
+            ${consecutiveSuccesses}/
+            ${successThreshold}
+
+          </div>
+
+
+          <div class="rate-progress">
+
+            <div
+              class="rate-progress-bar"
+              style="
+                width:${progress}%
+              "
+            ></div>
+
+          </div>
+
+
+          ${
+            key.cooldownRemaining > 0
+
+              ? `
+
+                <div
+                  style="
+                    margin-top:12px;
+                    font-size:12px;
+                  "
+                >
+
+                  Cooldown:
+                  ${
+                    formatCooldown(
+                      key.cooldownRemaining
+                    )
+                  }
+
+                </div>
+              `
+
+              : ''
+          }
+
+
+          ${
+            key.lastErrorCode
+
+              ? `
+
+                <div
+                  style="
+                    margin-top:10px;
+                    font-size:11px;
+                    opacity:.7;
+                  "
+                >
+
+                  Last error:
+                  ${key.lastErrorCode}
+
+                </div>
+              `
+
+              : ''
+          }
+
+        </div>
+      `;
+    }
+
+
+    content.innerHTML =
+      html;
+
+
+  } catch (error) {
+
+    console.error(
+      '[RATE DASHBOARD]',
+      error
+    );
+
+
+    globalStatus.textContent =
+      'Unable to load intelligence';
+
+
+    content.innerHTML = `
+      <div class="rate-global-card">
+
+        <strong>
+          Failed to load LLM intelligence
+        </strong>
+
+        <div
+          style="
+            margin-top:10px;
+            color:var(--err);
+            font-size:12px;
+          "
+        >
+          ${
+            error.message ||
+            String(error)
+          }
+        </div>
+
+      </div>
+    `;
+  }
+  }
+
+// ============================================================
+// LLM RATE INTELLIGENCE CONTROLS
+// ============================================================
+
+const softRateResetButton =
+  document.getElementById(
+    'softRateResetButton'
+  );
+
+const learningRateResetButton =
+  document.getElementById(
+    'learningRateResetButton'
+  );
+
+const hardRateResetButton =
+  document.getElementById(
+    'hardRateResetButton'
+  );
+
+const cleanupRateProfilesButton =
+  document.getElementById(
+    'cleanupRateProfilesButton'
+  );
+
+const rateResetMessage =
+  document.getElementById(
+    'rateResetMessage'
+  );
+
+
+function setRateResetMessage(
+  message,
+  isError = false
+) {
+
+  if (!rateResetMessage) {
+    return;
+  }
+
+  rateResetMessage.textContent =
+    message;
+
+  rateResetMessage.style.color =
+    isError
+      ? 'var(--err)'
+      : 'var(--ok)';
+}
+
+
+async function resetRateIntelligence(
+  mode
+) {
+
+  let confirmationMessage;
+
+  if (
+    mode === 'soft'
+  ) {
+
+    confirmationMessage =
+      'Soft reset will unlock keys and clear temporary cooldown/error state. Continue?';
+
+  } else if (
+    mode === 'learning'
+  ) {
+
+    confirmationMessage =
+      'Learning reset will erase learned rate intervals and health statistics, but will NOT delete your API keys. Continue?';
+
+  } else {
+
+    confirmationMessage =
+      'HARD RESET will permanently delete ALL LLM rate intelligence profiles. Your API keys stored in batches will NOT be deleted. Continue?';
+  }
+
+
+  if (
+    !confirm(
+      confirmationMessage
+    )
+  ) {
+    return;
+  }
+
+
+  try {
+
+    setRateResetMessage(
+      'Resetting LLM intelligence...'
+    );
+
+    const response =
+      await fetch(
+        '/api/batch/llm-rate-reset',
+        {
+          method:
+            'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json'
+          },
+
+          body:
+            JSON.stringify({
+              mode
+            })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        'Reset failed'
+      );
+    }
+
+    setRateResetMessage(
+      data.message ||
+      `${mode} reset completed successfully.`
+    );
+
+    await loadRateDashboard();
+
+  } catch (error) {
+
+    console.error(
+      '[RATE RESET]',
+      error
+    );
+
+    setRateResetMessage(
+      error.message ||
+      'Reset failed',
+      true
+    );
+  }
+}
+
+
+async function cleanupStaleRateProfiles() {
+
+  if (
+    !confirm(
+      'Remove rate profiles belonging to API keys that are no longer configured in your batches?'
+    )
+  ) {
+    return;
+  }
+
+
+  try {
+
+    setRateResetMessage(
+      'Cleaning stale profiles...'
+    );
+
+    const response =
+      await fetch(
+        '/api/batch/llm-rate-cleanup',
+        {
+          method:
+            'POST'
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        'Cleanup failed'
+      );
+    }
+
+    setRateResetMessage(
+      `Removed ${data.deletedProfiles || 0} stale profile(s).`
+    );
+
+    await loadRateDashboard();
+
+  } catch (error) {
+
+    console.error(
+      '[RATE CLEANUP]',
+      error
+    );
+
+    setRateResetMessage(
+      error.message ||
+      'Cleanup failed',
+      true
+    );
+  }
+}
+
+
+// ============================================================
+// BUTTON EVENTS
+// ============================================================
+
+softRateResetButton?.addEventListener(
+  'click',
+  () => {
+    resetRateIntelligence(
+      'soft'
+    );
+  }
+);
+
+
+learningRateResetButton?.addEventListener(
+  'click',
+  () => {
+    resetRateIntelligence(
+      'learning'
+    );
+  }
+);
+
+
+hardRateResetButton?.addEventListener(
+  'click',
+  () => {
+    resetRateIntelligence(
+      'hard'
+    );
+  }
+);
+
+
+cleanupRateProfilesButton?.addEventListener(
+  'click',
+  cleanupStaleRateProfiles
+);
+  
+
+// Refresh while drawer is open.
+setInterval(
+  () => {
+
+    if (
+      rateDrawer.classList.contains(
+        'open'
+      )
+    ) {
+      loadRateDashboard();
+    }
+
+  },
+  5000
+);
+
+// ============================================================
+// RECOVER ACTIVE BATCH AFTER RELOAD
+// ============================================================
+
+window.addEventListener(
+  'load',
+  async () => {
+
+    if (!currentBatchId) return;
+
+
+    console.log(
+      'Recovering batch:',
+      currentBatchId
+    );
+
+
+    await refreshBatch();
+
+    startPolling();
+
+  }
+);
+loadContractSkipList();
+startReauditPolling();
+
+</script>
+
+
+</body>
+</html>
+
