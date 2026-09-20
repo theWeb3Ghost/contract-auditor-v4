@@ -250,11 +250,38 @@ async function listReaudits(req, res) {
     if (req.query.batchId) query.batchId = String(req.query.batchId);
     if (req.query.status) query.status = String(req.query.status);
 
-    const records = await db.collection('reaudits')
-      .find(query)
-      .sort({ status: 1, createdAt: 1 })
-      .limit(200)
-      .toArray();
+    // Never let old 'applied' records push actionable ones out of the list:
+    // return every non-applied record, plus the most recent applied ones.
+    const reaudits = db.collection('reaudits');
+    let records;
+    if (query.status) {
+      records = await reaudits.find(query).sort({ createdAt: 1 }).limit(500).toArray();
+    } else {
+      const active = await reaudits
+        .find({ ...query, status: { $ne: 'applied' } })
+        .sort({ createdAt: 1 })
+        .limit(500)
+        .toArray();
+      const done = await reaudits
+        .find({ ...query, status: 'applied' })
+        .sort({ updatedAt: -1 })
+        .limit(500)
+        .toArray();
+      records = [...active, ...done];
+    }
+
+    // Finished records don't need their (large) source code on every poll.
+    // Keep a short marker so the UI still shows "verified".
+    for (const r of records) {
+      if (r.status !== 'applied') continue;
+      if (r.mainSource) r.mainSource = '[stored]';
+      if (Array.isArray(r.externalContracts)) {
+        r.externalContracts = r.externalContracts.map(c => ({
+          ...c,
+          source: c.source ? '[stored]' : c.source
+        }));
+      }
+    }
 
     return res.json({ ok: true, reaudits: records });
   } catch (error) {
@@ -744,7 +771,34 @@ async function drainReadyReaudits(onlyBatchId = null) {
   return applied;
 }
 
+// Clear finished (applied) Reaudit records from the queue.
+// Body: { ids?: string[], batchId?: string }. With no filter it clears every
+// applied record. Only 'applied' records are ever deleted: the batch item has
+// already stored its final result, so nothing depends on them. A pending /
+// running / ready record must be closed with SKIP instead, otherwise its batch
+// item would be stranded on reaudit_pending.
+async function clearReaudits(req, res) {
+  try {
+    const { ObjectId } = require('mongodb');
+    const db = await getDb();
+    const query = { status: 'applied' };
+
+    if (Array.isArray(req.body?.ids)) {
+      const ids = req.body.ids.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+      if (!ids.length) return res.json({ ok: true, deleted: 0 });
+      query._id = { $in: ids };
+    }
+    if (req.body?.batchId) query.batchId = String(req.body.batchId);
+
+    const result = await db.collection('reaudits').deleteMany(query);
+    return res.json({ ok: true, deleted: result.deletedCount || 0 });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: errorText(error) });
+  }
+}
+
 router.get('/', listReaudits);
+router.post('/clear', clearReaudits);
 router.get('/:id', getReaudit);
 router.post('/:id/contracts', addExternalContract);
 router.post('/:id/run', runReaudit);
