@@ -15,6 +15,7 @@
 // A Reaudit is one-shot. RUN or SKIP permanently consumes the opportunity.
 
 const express = require('express');
+const { ObjectId } = require('mongodb');
 const { getDb } = require('./db');
 const { runLLMAudit } = require('./llm');
 const { runComReaudit } = require('./com');
@@ -84,7 +85,7 @@ async function ensureReauditRecord({ batch, item }) {
   if (existing) {
     await db.collection('batch_items').updateOne(
       { _id: item._id, reauditUsed: { $ne: true } },
-      { $set: { status: 'reaudit_pending', auditStage: 'reaudit_pending', reauditId: String(item._id), updatedAt: now() } }
+      { $set: { status: 'reaudit_pending', auditStage: 'reaudit_pending', reauditId: String(existing._id), updatedAt: now() } }
     );
     return existing;
   }
@@ -121,13 +122,19 @@ async function ensureReauditRecord({ batch, item }) {
     prioritySeq: Number(item.index) || 0
   };
 
+  let reauditId;
   try {
-    await reaudits.insertOne(document);
+    const result = await reaudits.insertOne(document);
+    reauditId = String(result.insertedId);
   } catch (error) {
     if (error?.code === 11000) {
-      return reaudits.findOne({ auditId: String(item._id) });
+      const existingReaudit = await reaudits.findOne({ auditId: String(item._id) });
+      if (existingReaudit) {
+        reauditId = String(existingReaudit._id);
+      }
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   await db.collection('batch_items').updateOne(
@@ -137,14 +144,14 @@ async function ensureReauditRecord({ batch, item }) {
         status: 'reaudit_pending',
         reauditUsed: false,
         auditStage: 'reaudit_pending',
-        reauditId: String(item._id),
+        reauditId: reauditId || String(item._id),
         updatedAt: now()
       }
     }
   );
 
   console.log(`[REAUDIT] Created for ${item.address} batch=${batch.batchId} index=${item.index}`);
-  return document;
+  return { ...document, _id: reauditId ? new ObjectId(reauditId) : document._id };
 }
 
 async function fetchExternalContract({ address, chainId, etherscanKey }) {
@@ -237,8 +244,9 @@ function verifiedEvidence(re) {
 }
 
 async function getReauditById(id) {
+  if (!ObjectId.isValid(String(id))) return null;
   const db = await getDb();
-  return db.collection('reaudits').findOne({ _id: require('mongodb').ObjectId.isValid(id) ? new (require('mongodb').ObjectId)(id) : null });
+  return db.collection('reaudits').findOne({ _id: new ObjectId(id) });
 }
 
 async function listReaudits(req, res) {
@@ -473,7 +481,7 @@ async function runReaudit(req, res) {
 
     const batch = await db.collection('batches').findOne({ batchId: record.batchId });
     const item = await db.collection('batch_items').findOne({
-  _id: new (require('mongodb').ObjectId)(record.auditId)
+  _id: new ObjectId(record.auditId)
 });
     if (!batch || !item) throw new Error('Parent batch item no longer exists');
 
@@ -591,7 +599,7 @@ async function runReaudit(req, res) {
     try {
       const db = await getDb();
 await db.collection('reaudits').updateOne(
-  { _id: new (require('mongodb').ObjectId)(req.params.id) },
+  { _id: new ObjectId(req.params.id) },
   {
     $set: {
       status: 'pending',
@@ -680,7 +688,7 @@ async function applyClaimedReaudit(record) {
   const reaudits = db.collection('reaudits');
 
   const item = await items.findOne({
-  _id: new (require('mongodb').ObjectId)(record.auditId),
+  _id: new ObjectId(record.auditId),
   batchId: record.batchId
 });
   if (!item) {
@@ -779,7 +787,6 @@ async function drainReadyReaudits(onlyBatchId = null) {
 // item would be stranded on reaudit_pending.
 async function clearReaudits(req, res) {
   try {
-    const { ObjectId } = require('mongodb');
     const db = await getDb();
     const query = { status: 'applied' };
 

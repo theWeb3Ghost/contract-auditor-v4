@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping health endpoint
-        run: curl -sf https://contract-auditor-v3.onrender.com/health
+        run: curl -sf https://contract-auditor-v4.onrender.com/health

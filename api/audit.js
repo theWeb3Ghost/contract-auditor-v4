@@ -7,24 +7,23 @@
 // GET /api/audit/:jobId
 // Returns the current status/result of an audit job.
 //
-// Jobs are stored in memory for now.
-// A Render restart/redeploy will clear existing jobs.
+// Jobs are persisted in MongoDB (collection: single_audit_jobs).
+// A Render restart does not lose results for completed/failed jobs.
 
 const crypto = require('crypto');
 const { fetch, Agent } = require('undici');
 
+const {
+  getDb
+} = require('./db');
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
 
-const jobs = new Map();
-
 // Maximum Solidity source characters sent to the LLM
-const MAX_CHARS = 300000;
-
-// Keep completed jobs for 30 minutes
-const JOB_TTL = 30 * 60 * 1000;
+// Kept in sync with llm.js MAX_CHARS and batch.js MAX_SOURCE_CHARS.
+const MAX_CHARS = 3000000;
 
 // LLM timeout: 10 minutes
 const LLM_TIMEOUT = 10 * 60 * 1000;
@@ -57,40 +56,19 @@ const llmDispatcher = new Agent({
 
 
 // ============================================================
-// CLEANUP OLD JOBS
+// HELPERS
 // ============================================================
 
-function cleanupJobs() {
-  const now = Date.now();
+async function updateJob(jobId, updates) {
+  const db = await getDb();
 
-  for (const [jobId, job] of jobs.entries()) {
-    const isFinished =
-      job.status === 'completed' ||
-      job.status === 'failed';
-
-    if (
-      isFinished &&
-      job.finishedAt &&
-      now - job.finishedAt > JOB_TTL
-    ) {
-      jobs.delete(jobId);
-
-      console.log(
-        `[AUDIT ${jobId}] Old job removed from memory`
-      );
-    }
-  }
+  await db
+    .collection('single_audit_jobs')
+    .updateOne(
+      { jobId },
+      { $set: updates }
+    );
 }
-
-
-// Run cleanup every 5 minutes
-const cleanupInterval = setInterval(
-  cleanupJobs,
-  5 * 60 * 1000
-);
-
-// Don't keep Node alive because of this interval
-cleanupInterval.unref();
 
 
 // ============================================================
@@ -98,8 +76,11 @@ cleanupInterval.unref();
 // ============================================================
 
 async function runAudit(jobId, data) {
+  const db = await getDb();
 
-  const job = jobs.get(jobId);
+  let job = await db
+    .collection('single_audit_jobs')
+    .findOne({ jobId });
 
   if (!job) {
     console.error(
@@ -114,6 +95,11 @@ async function runAudit(jobId, data) {
     // --------------------------------------------------------
     // UPDATE JOB STATUS
     // --------------------------------------------------------
+
+    await updateJob(jobId, {
+      status: 'running',
+      startedAt: Date.now()
+    });
 
     job.status = 'running';
     job.startedAt = Date.now();
@@ -442,16 +428,21 @@ ${truncated
     // SAVE SUCCESSFUL RESULT
     // --------------------------------------------------------
 
+    const finishedAt = Date.now();
+
+    await updateJob(jobId, {
+      status: 'completed',
+      result: String(result).trim(),
+      error: null,
+      truncated,
+      finishedAt
+    });
+
     job.status = 'completed';
-
     job.result = String(result).trim();
-
     job.error = null;
-
     job.truncated = truncated;
-
-    job.finishedAt = Date.now();
-
+    job.finishedAt = finishedAt;
 
     const duration =
       job.finishedAt - job.startedAt;
@@ -484,26 +475,21 @@ ${truncated
     // MARK JOB AS FAILED
     // --------------------------------------------------------
 
-    job.status = 'failed';
+    const finishedAt = Date.now();
 
-    job.finishedAt = Date.now();
-
-
-    // --------------------------------------------------------
-    // DETERMINE ERROR MESSAGE
-    // --------------------------------------------------------
+    let jobError;
 
     if (
       err?.name === 'AbortError' ||
       err?.name === 'TimeoutError'
     ) {
 
-      job.error =
+      jobError =
         `LLM request timed out after ${LLM_TIMEOUT / 60000} minutes.`;
 
     } else {
 
-      job.error = String(
+      jobError = String(
         err?.cause?.message ||
         err?.message ||
         err ||
@@ -511,6 +497,16 @@ ${truncated
       );
 
     }
+
+    await updateJob(jobId, {
+      status: 'failed',
+      error: jobError,
+      finishedAt
+    });
+
+    job.status = 'failed';
+    job.finishedAt = finishedAt;
+    job.error = jobError;
 
 
     // --------------------------------------------------------
@@ -671,18 +667,27 @@ module.exports = async function auditHandler(req, res) {
 
     const jobId = crypto.randomUUID();
 
+    const createdAt = Date.now();
 
-    jobs.set(jobId, {
+    const db = await getDb();
 
-      status: 'queued',
+    await db
+      .collection('single_audit_jobs')
+      .insertOne({
 
-      result: null,
+        jobId,
 
-      error: null,
+        status: 'queued',
 
-      truncated: false,
+        result: null,
 
-      createdAt: Date.now(),
+        error: null,
+
+        truncated: false,
+
+      createdAt,
+
+      startedAt: null,
 
       startedAt: null,
 
@@ -768,7 +773,26 @@ module.exports = async function auditHandler(req, res) {
     }
 
 
-    const job = jobs.get(jobId);
+    const db = await getDb();
+
+    const job = await db
+      .collection('single_audit_jobs')
+      .findOne(
+        { jobId },
+        {
+          projection: {
+            _id: 0,
+            jobId: 1,
+            status: 1,
+            result: 1,
+            error: 1,
+            truncated: 1,
+            createdAt: 1,
+            startedAt: 1,
+            finishedAt: 1
+          }
+        }
+      );
 
 
     if (!job) {

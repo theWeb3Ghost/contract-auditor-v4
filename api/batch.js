@@ -39,8 +39,9 @@ const {
 // ============================================================
 
 // Maximum source sent to the LLM.
+// Kept in sync with llm.js MAX_CHARS.
 const MAX_SOURCE_CHARS =
-  1500000;
+  3000000;
 
 // ============================================================
 // ADAPTIVE LLM RATE LEARNING
@@ -276,11 +277,6 @@ function getKeyFingerprint(apiKey) {
 // How long to wait between completed contracts.
 const ITEM_DELAY =
   200;
-
-// Maximum number of attempts when the LLM returns an empty response.
-// 3 total attempts = initial attempt + 2 retries.
-const MAX_EMPTY_AUDIT_ATTEMPTS =
-  3;
 
 // ============================================================
 // WORKER STATE
@@ -2939,14 +2935,6 @@ console.warn(
       continue;
     }
 
-    if (
-      isEmptyAuditResponseError(error) &&
-      attempt < maxKeyAttempts
-    ) {
-
-      continue;
-    }
-
     break;
   }
 }
@@ -3350,12 +3338,6 @@ async function startBatchWorker(
             item
           );
 
-
-        // A non-terminal COM outcome must never advance progress.
-        if (outcome && outcome.terminal === false) {
-          await sleep(250);
-          continue;
-        }
 
         const updates = {
 
@@ -3926,7 +3908,7 @@ async function getBatch(
           {
             projection: {
 
-              openaiKey:
+              llmApiKeys:
                 0,
 
               etherscanKey:
@@ -4013,99 +3995,6 @@ async function getBatch(
 
       totalPages:
         Math.ceil(totalItems / pageSize) || 1
-    });
-
-
-  } catch (error) {
-
-    return res
-      .status(500)
-      .json({
-        error:
-          errorText(
-            error
-          )
-      });
-  }
-}
-
-
-// ============================================================
-// GET BATCH ITEMS
-// ============================================================
-
-async function getBatchItems(
-  req,
-  res
-) {
-
-  try {
-
-    const db =
-      await getDb();
-
-
-    const limit =
-      Math.min(
-        Number(
-          req.query.limit
-        ) || 100,
-
-        500
-      );
-
-
-    const skip =
-      Math.max(
-        Number(
-          req.query.skip
-        ) || 0,
-
-        0
-      );
-
-
-    const items =
-      await db
-        .collection(
-          'batch_items'
-        )
-        .find(
-          {
-            batchId:
-              req.params.batchId
-          },
-          {
-            projection: {
-
-              source:
-                0,
-
-              audit:
-                0
-            }
-          }
-        )
-        .sort({
-          index:
-            1
-        })
-        .skip(
-          skip
-        )
-        .limit(
-          limit
-        )
-        .toArray();
-
-
-    return res.json({
-
-      items,
-
-      skip,
-
-      limit
     });
 
 
@@ -5572,7 +5461,6 @@ router.get(
 
 router.post(
   '/llm-rate-reset',
-  express.json(),
   resetLLMRateIntelligence
 );
 
@@ -5589,12 +5477,6 @@ router.get(
 );
 
 
-router.get(
-  '/:batchId/items',
-  getBatchItems
-);
-
-
 router.post(
   '/:batchId/pause',
   pauseBatch
@@ -5603,7 +5485,6 @@ router.post(
 
 router.post(
   '/:batchId/config',
-  express.json(),
   updateBatchConfig
 );
 
